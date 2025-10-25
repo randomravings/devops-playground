@@ -74,7 +74,7 @@
         </org.jenkinsci.plugin.gitea.OriginPullRequestDiscoveryTrait>
         <org.jenkinsci.plugin.gitea.ForkPullRequestDiscoveryTrait>
           <strategyId>1</strategyId>
-          <trust class="org.jenkinsci.plugin.gitea.ForkPullRequestDiscoveryTrait$TrustContributors"/>
+          <trust class="org.jenkinsci.plugin.gitea.ForkPullRequestDiscoveryTrait$$TrustContributors"/>
         </org.jenkinsci.plugin.gitea.ForkPullRequestDiscoveryTrait>
       </traits>
     </org.jenkinsci.plugin.gitea.GiteaSCMNavigator>

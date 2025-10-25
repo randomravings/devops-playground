@@ -24,7 +24,7 @@ services:
       dockerfile: Dockerfile
     container_name: jenkins
     environment:
-      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false -Dorg.eclipse.jetty.server.Request.maxFormContentSize=1000000 -Dorg.eclipse.jetty.server.Request.maxFormKeys=10000
     volumes:
       - ./.volumes/jenkins:/var/jenkins_home
       - ./.volumes/jenkins/init.groovy.d:/var/jenkins_home/init.groovy.d:ro

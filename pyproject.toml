@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "devops-tools"
+version = "0.1.0"
+description = "Python library for managing devops playground environments (Jenkins, Gitea, Docker)"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    {name = "DevOps Playground"}
+]
+dependencies = [
+    "click>=8.1",
+    "requests>=2.28",
+    "docker>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+devops-tools = "devops_tools.cli:cli"
+dt = "devops_tools.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["devops_tools*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
