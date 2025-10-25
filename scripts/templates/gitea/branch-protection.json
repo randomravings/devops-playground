@@ -1,0 +1,46 @@
+{
+    "approvals_whitelist_teams": [
+        "${TEAM}"
+    ],
+    "approvals_whitelist_deploy_keys": false,
+    "approvals_whitelist_username": [
+        "${GITEA_ADMIN_USER}"
+    ],
+    "block_admin_merge_override": true,
+    "block_on_official_review_requests": true,
+    "block_on_outdated_branch": true,
+    "block_on_rejected_reviews": true,
+    "branch_name": "main",
+    "dismiss_stale_approvals": true,
+    "enable_approvals_whitelist": true,
+    "enable_force_push": true,
+    "enable_force_push_allowlist": true,
+    "enable_merge_whitelist": true,
+    "enable_push": true,
+    "enable_push_whitelist": true,
+    "enable_status_check": true,
+    "force_push_allowlist_deploy_keys": false,
+    "force_push_allowlist_teams": [ ],
+    "force_push_allowlist_usernames": [
+        "${GITEA_ADMIN_USER}"
+    ],
+    "ignore_stale_approvals": true,
+    "merge_whitelist_teams": [
+        "${TEAM}"
+    ],
+    "merge_whitelist_usernames": [
+        "${GITEA_ADMIN_USER}"
+    ],
+    "priority": 0,
+    "protected_file_patterns": null,
+    "push_whitelist_deploy_keys": false,
+    "push_whitelist_teams": [ ],
+    "push_whitelist_usernames": [
+        "${GITEA_ADMIN_USER}"
+    ],
+    "require_signed_commits": false,
+    "required_approvals": 1,
+    "rule_name": "main",
+    "status_check_contexts": [ ],
+    "unprotected_file_patterns": null
+}

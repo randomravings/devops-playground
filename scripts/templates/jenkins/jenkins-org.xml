@@ -1,0 +1,91 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<jenkins.branch.OrganizationFolder plugin="branch-api@2.1255.v2f5fe203584a_">
+  <actions/>
+  <description>${JOB_DESC}</description>
+  <displayName>${JOB_ORG_NAME}</displayName>
+  <properties>
+    <jenkins.branch.OrganizationChildHealthMetricsProperty>
+      <templates>
+        <com.cloudbees.hudson.plugins.folder.health.NamedChildHealthMetric plugin="cloudbees-folder@6.1062.v2877b_d6b_b_eeb_">
+          <childName></childName>
+        </com.cloudbees.hudson.plugins.folder.health.NamedChildHealthMetric>
+        <com.cloudbees.hudson.plugins.folder.health.WorstChildHealthMetric plugin="cloudbees-folder@6.1062.v2877b_d6b_b_eeb_">
+          <nonRecursive>false</nonRecursive>
+        </com.cloudbees.hudson.plugins.folder.health.WorstChildHealthMetric>
+      </templates>
+    </jenkins.branch.OrganizationChildHealthMetricsProperty>
+    <jenkins.branch.OrganizationChildOrphanedItemsProperty>
+      <strategy class="com.cloudbees.hudson.plugins.folder.computed.DefaultOrphanedItemStrategy" plugin="cloudbees-folder@6.1062.v2877b_d6b_b_eeb_">
+        <pruneDeadBranches>true</pruneDeadBranches>
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>30</numToKeep>
+        <abortBuilds>true</abortBuilds>
+      </strategy>
+    </jenkins.branch.OrganizationChildOrphanedItemsProperty>
+    <jenkins.branch.OrganizationChildTriggersProperty>
+      <templates>
+        <com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger plugin="cloudbees-folder@6.1062.v2877b_d6b_b_eeb_">
+          <spec>H/5 * * * *</spec>
+          <interval>900000</interval>
+        </com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger>
+      </templates>
+    </jenkins.branch.OrganizationChildTriggersProperty>
+    <org.jenkinsci.plugins.pipeline.maven.MavenConfigFolderOverrideProperty plugin="pipeline-maven@1567.vb_2c3a_2116860">
+      <settings class="jenkins.mvn.DefaultSettingsProvider"/>
+      <globalSettings class="jenkins.mvn.DefaultGlobalSettingsProvider"/>
+      <override>false</override>
+    </org.jenkinsci.plugins.pipeline.maven.MavenConfigFolderOverrideProperty>
+    <jenkins.branch.NoTriggerOrganizationFolderProperty>
+      <branches>.*</branches>
+      <strategy>INDEXING</strategy>
+    </jenkins.branch.NoTriggerOrganizationFolderProperty>
+  </properties>
+  <folderViews class="jenkins.branch.OrganizationFolderViewHolder">
+    <owner reference="../.."/>
+  </folderViews>
+  <healthMetrics/>
+  <icon class="jenkins.branch.MetadataActionFolderIcon">
+    <owner class="jenkins.branch.OrganizationFolder" reference="../.."/>
+  </icon>
+  <orphanedItemStrategy class="com.cloudbees.hudson.plugins.folder.computed.DefaultOrphanedItemStrategy" plugin="cloudbees-folder@6.1062.v2877b_d6b_b_eeb_">
+    <pruneDeadBranches>true</pruneDeadBranches>
+    <daysToKeep>7</daysToKeep>
+    <numToKeep>30</numToKeep>
+    <abortBuilds>true</abortBuilds>
+  </orphanedItemStrategy>
+  <triggers>
+    <com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger plugin="cloudbees-folder@6.1062.v2877b_d6b_b_eeb_">
+      <spec>H/5 * * * *</spec>
+      <interval>900000</interval>
+    </com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger>
+  </triggers>
+  <disabled>false</disabled>
+  <navigators>
+    <org.jenkinsci.plugin.gitea.GiteaSCMNavigator plugin="gitea@250.v76a_0b_d4fef5b_">
+      <serverUrl>${JOB_ORG_URL}</serverUrl>
+      <repoOwner>${JOB_ORG_NAME}</repoOwner>
+      <credentialsId>${JOB_ORG_CREDS}</credentialsId>
+      <traits>
+        <org.jenkinsci.plugin.gitea.BranchDiscoveryTrait>
+          <strategyId>1</strategyId>
+        </org.jenkinsci.plugin.gitea.BranchDiscoveryTrait>
+        <org.jenkinsci.plugin.gitea.OriginPullRequestDiscoveryTrait>
+          <strategyId>1</strategyId>
+        </org.jenkinsci.plugin.gitea.OriginPullRequestDiscoveryTrait>
+        <org.jenkinsci.plugin.gitea.ForkPullRequestDiscoveryTrait>
+          <strategyId>1</strategyId>
+          <trust class="org.jenkinsci.plugin.gitea.ForkPullRequestDiscoveryTrait$TrustContributors"/>
+        </org.jenkinsci.plugin.gitea.ForkPullRequestDiscoveryTrait>
+      </traits>
+    </org.jenkinsci.plugin.gitea.GiteaSCMNavigator>
+  </navigators>
+  <projectFactories>
+    <org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProjectFactory plugin="workflow-multibranch@821.vc3b_4ea_780798">
+      <scriptPath>Jenkinsfile</scriptPath>
+    </org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProjectFactory>
+  </projectFactories>
+  <buildStrategies/>
+  <strategy class="jenkins.branch.DefaultBranchPropertyStrategy">
+    <properties class="empty-list"/>
+  </strategy>
+</jenkins.branch.OrganizationFolder>

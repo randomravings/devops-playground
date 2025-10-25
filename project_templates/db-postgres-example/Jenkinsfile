@@ -1,0 +1,196 @@
+pipeline {
+    agent any
+    
+    environment {
+        PROJECT_ROOT = "${env.WORKSPACE}"
+        DBCI_PATH = "${env.WORKSPACE}/dbci-tools"
+        PYTHONDONTWRITEBYTECODE = '1'
+        PYTHONUNBUFFERED = '1'
+    }
+    
+    stages {
+        stage('Prepare DBCI Tools') {
+            steps {
+                echo "Preparing DBCI tools repository..."
+                script {
+                    // Derive DBCI repository URL from the original GIT_URL
+                    def originalUrl = env.GIT_URL
+                    def dbciRepoUrl = ""
+                    
+                    if (originalUrl) {
+                        // Replace the repository name with 'dbci-tools'
+                        dbciRepoUrl = originalUrl.replaceAll(/\/([^\/]+)\.git$/, '/dbci-tools.git')
+                        echo "Original repository: ${originalUrl}"
+                        echo "DBCI repository: ${dbciRepoUrl}"
+                    } else {
+                        error("GIT_URL environment variable is not set. Cannot derive DBCI tools repository URL.")
+                    }
+                    
+                    // Clean up any existing dbci-tools directory and clone DBCI tools
+                    sh "rm -rf dbci-tools && git clone --branch main --single-branch --depth 1 '${dbciRepoUrl}' dbci-tools"
+                    
+                    // Make run.sh executable
+                    sh "cd ${env.DBCI_PATH} && chmod +x run.sh"
+                    
+                    echo "DBCI tools cloned to: ${env.DBCI_PATH}"
+                }
+            }
+        }
+        
+        stage('BUILD') {
+            steps {
+                echo "Running BUILD stage - normalizing SQL schema files..."
+                script {
+                    sh "cd ${env.DBCI_PATH} && ./run.sh BUILD ${env.PROJECT_ROOT}"
+                }
+                
+                // Archive normalized schema files
+                archiveArtifacts(
+                    artifacts: '.out/db/schema/**/*.sql',
+                    allowEmptyArchive: true,
+                    fingerprint: true
+                )
+            }
+            post {
+                success {
+                    echo "✅ BUILD stage completed successfully - schema normalized"
+                    publishChecks name: 'BUILD', title: 'Schema Build', summary: 'Schema normalized successfully', conclusion: 'SUCCESS'
+                }
+                failure {
+                    echo "❌ BUILD stage failed - schema normalization error"
+                    publishChecks name: 'BUILD', title: 'Schema Build', summary: 'Schema normalization error', conclusion: 'FAILURE'
+                }
+            }
+        }
+        
+        stage('LINT') {
+            steps {
+                echo "Running LINT stage - checking SQL code quality..."
+                script {
+                    sh "cd ${env.DBCI_PATH} && ./run.sh LINT ${env.PROJECT_ROOT}"
+                }
+            }
+            post {
+                success {
+                    echo "✅ LINT stage completed successfully - no linting errors"
+                    publishChecks name: 'LINT', title: 'SQL Linting', summary: 'SQL code quality validated', conclusion: 'SUCCESS'
+                }
+                failure {
+                    echo "❌ LINT stage failed - SQL linting errors detected"
+                    publishChecks name: 'LINT', title: 'SQL Linting', summary: 'SQL linting errors detected', conclusion: 'FAILURE'
+                }
+            }
+        }
+        
+        stage('DIFF') {
+            steps {
+                echo "Running DIFF stage - comparing schema changes against main branch..."
+                script {
+                    sh "cd ${env.DBCI_PATH} && ./run.sh DIFF ${env.PROJECT_ROOT}"
+                }
+                
+                // Archive diff results
+                archiveArtifacts(
+                    artifacts: '.out/schema-changes.*',
+                    allowEmptyArchive: true,
+                    fingerprint: true
+                )
+            }
+            post {
+                success {
+                    echo "✅ DIFF stage completed successfully - schema diff generated"
+                    script {
+                        // Check if change script exists and show summary
+                        def changeScriptExists = fileExists('.out/schema-changes.change-script.sql')
+                        def diffExists = fileExists('.out/schema-changes.diff')
+                        
+                        def summary = "Schema changes analyzed"
+                        if (changeScriptExists) {
+                            echo "📄 Schema change script generated: .out/schema-changes.change-script.sql"
+                            summary += " (change script generated)"
+                        }
+                        if (diffExists) {
+                            echo "📊 Schema diff generated: .out/schema-changes.diff"
+                        }
+                        
+                        publishChecks name: 'DIFF', title: 'Schema Diff', summary: summary, conclusion: 'SUCCESS'
+                    }
+                }
+                failure {
+                    echo "❌ DIFF stage failed - schema comparison error"
+                    publishChecks name: 'DIFF', title: 'Schema Diff', summary: 'Schema comparison error', conclusion: 'FAILURE'
+                }
+            }
+        }
+        
+        stage('GUARD') {
+            steps {
+                echo "Running GUARD stage - validating schema changes..."
+                script {
+                    sh "cd ${env.DBCI_PATH} && ./run.sh GUARD ${env.PROJECT_ROOT}"
+                }
+            }
+            post {
+                success {
+                    echo "✅ GUARD stage completed successfully - schema validation passed"
+                    publishChecks name: 'GUARD', title: 'Schema Guard', summary: 'Schema validation successful', conclusion: 'SUCCESS'
+                }
+                failure {
+                    echo "❌ GUARD stage failed - schema validation errors detected"
+                    publishChecks name: 'GUARD', title: 'Schema Guard', summary: 'Schema validation errors detected', conclusion: 'FAILURE'
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "Pipeline execution completed"
+            
+            // Clean up workspace artifacts but keep important files
+            script {
+                sh "find . -name '*.tmp' -delete 2>/dev/null || true && find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true"
+            }
+        }
+        
+        success {
+            echo """
+            🎉 All stages completed successfully! 
+            
+            Pipeline Summary:
+            ✅ DBCI Tools: Cloned and ready
+            ✅ BUILD: Schema normalized to .out/db/schema/
+            ✅ LINT: SQL code quality validated
+            ✅ DIFF: Schema changes analyzed and scripts generated
+            ✅ GUARD: Schema validation passed
+            
+            Check the archived artifacts for:
+            - Normalized schema files (.out/db/schema/)
+            - Schema change script (.out/schema-changes.change-script.sql)
+            - Schema diff (.out/schema-changes.diff)
+            """
+            
+            script {
+                publishChecks name: 'DBCI-Pipeline', title: 'DBCI Complete', summary: 'All DBCI stages completed successfully', conclusion: 'SUCCESS'
+            }
+        }
+        
+        failure {
+            echo """
+            ❌ Pipeline failed at one or more stages.
+            
+            Check the stage logs above for detailed error information.
+            Common issues:
+            - SQL syntax errors (BUILD/LINT stages)
+            - Schema validation failures (GUARD stage) 
+            - Git repository access issues (Clone stage)
+            """
+        }
+        
+        cleanup {
+            // Optional: Clean up DBCI tools directory if desired
+            // sh "rm -rf ${params.DBCI_LOCATION}"
+            echo "Pipeline cleanup completed"
+        }
+    }
+}

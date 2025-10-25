@@ -1,7 +1,13 @@
+ansicolor:latest
+timestamper:latest
+pipeline-utility-steps:latest
 pipeline-maven:latest
 maven-plugin:latest
 workflow-aggregator:latest
+workflow-multibranch:latest
 git:latest
+gitea:latest
+gitea-checks:latest
 workflow-job:latest
 credentials-binding:latest
 credentials:latest

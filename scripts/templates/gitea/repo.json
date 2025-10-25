@@ -1,0 +1,13 @@
+{
+    "auto_init": true,
+    "default_branch": "main",
+    "description": "${DESCRIPTION}",
+    "gitignores": "Maven,VisualStudioCode",
+    "issue_labels": "Advanced",
+    "name": "${NAME}",
+    "object_format_name": "sha1",
+    "private": false,
+    "readme": "Default",
+    "template": false,
+    "trust_model": "default"
+}

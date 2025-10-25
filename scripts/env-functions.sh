@@ -12,6 +12,7 @@ env_setup() {
   : "${SCRIPT_DIR:?SCRIPT_DIR must be set and non-empty}"
   : "${DOCKER_DIR:?DOCKER_DIR must be set and non-empty}"
   : "${DOCKER_ENV_NAME:?DOCKER_ENV_NAME must be set and non-empty}"
+  : "${TEMPLATE_DIR:?TEMPLATE_DIR must be set and non-empty}"
 
   # Export and default admin credentials (safe quoted expansions)
 
@@ -19,13 +20,14 @@ env_setup() {
   local jenkins_dir="${VOLUMES_DIR}/jenkins"
   local jenkins_init_dir="${jenkins_dir}/init.groovy.d"
   local jenkins_init="${jenkins_init_dir}/basic-security.groovy"
-  local basic_security_template="${SCRIPT_DIR}/templates/basic-security.groovy"
+  local basic_security_template="${TEMPLATE_DIR}/jenkins/basic-security.groovy"
 
   mkdir -p "${VOLUMES_DIR}" "$jenkins_dir" "$jenkins_init_dir"
 
   # Create the basic-security.groovy init script from template if it doesn't already exist
   # Preconfigure admin user and disable the setup wizard
 	sed -e "s/<user>/${JENKINS_ADMIN_USER}/g" -e "s/<pass>/${JENKINS_ADMIN_PASSWORD}/g" "$basic_security_template" > "$jenkins_init"
+  cp "${TEMPLATE_DIR}/jenkins/jenkins.yaml" "${jenkins_dir}/jenkins.yaml"
   chmod 644 "$jenkins_init"
   echo "Wrote $jenkins_init (admin=${JENKINS_ADMIN_USER})"
 
@@ -84,8 +86,10 @@ env_setup() {
     local tmp_auth=$(mktemp)
     printf '%s:%s' "${JENKINS_ADMIN_USER}" "${JENKINS_ADMIN_PASSWORD}" > "$tmp_auth"
     docker cp "$tmp_auth" jenkins:/tmp/jenkins-cli.auth
+    #docker cp "$DOCKER_DIR/jenkins/jenkins-cli.sh" jenkins:/tmp/jenkins-cli
     # Set ownership to the 'jenkins' user inside the container so the CLI process can read it
     docker exec -u 0 jenkins sh -c 'mv /tmp/jenkins-cli.auth /usr/local/bin/jenkins-cli.auth && chown jenkins:jenkins /usr/local/bin/jenkins-cli.auth && chmod 600 /usr/local/bin/jenkins-cli.auth'
+    #docker exec -u 0 jenkins sh -c 'mv /tmp/jenkins-cli /usr/local/bin/jenkins-cli && chown jenkins:jenkins /usr/local/bin/jenkins-cli && chmod 755 /usr/local/bin/jenkins-cli'
     rm -f "$tmp_auth"
   fi
 }

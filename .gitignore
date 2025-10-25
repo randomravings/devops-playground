@@ -1,2 +1,6 @@
 .env
 .volumes/
+target/
+*.egg-info/
+__pycache__/
+.dbci-venv/

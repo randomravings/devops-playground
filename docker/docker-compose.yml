@@ -1,11 +1,14 @@
 services:
   server:
-    image: docker.gitea.com/gitea:1.24.6
+    image: docker.gitea.com/gitea:latest
     container_name: gitea
     environment:
       - USER_UID=1000
       - USER_GID=1000
       - GITEA__security__INSTALL_LOCK=true
+      - GITEA__webhook__ALLOWED_HOST_LIST=jenkins
+      - GITEA__webhook__SKIP_TLS_VERIFY=true
+      - GITEA__server__ROOT_URL=http://gitea:3000/
     volumes:
       - ./.volumes/gitea:/data
       - /etc/timezone:/etc/timezone:ro
@@ -15,6 +18,7 @@ services:
       - "222:22"
 
   jenkins:
+    #image: jenkins/jenkins:latest
     build:
       context: ./jenkins
       dockerfile: Dockerfile
