@@ -1,0 +1,11 @@
+pipeline-maven:latest
+maven-plugin:latest
+workflow-aggregator:latest
+git:latest
+workflow-job:latest
+credentials-binding:latest
+credentials:latest
+ssh-credentials:latest
+ssh-slaves:latest
+github:latest
+configuration-as-code:latest

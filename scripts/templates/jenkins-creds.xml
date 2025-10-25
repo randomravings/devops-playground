@@ -1,0 +1,7 @@
+<com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl>
+  <scope>GLOBAL</scope>
+  <id>${CRED_ID}</id>
+  <description>${CRED_DESC}</description>
+  <username>${CRED_USER}</username>
+  <password>${CRED_PASS}</password>
+</com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl>
