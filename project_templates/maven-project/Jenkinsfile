@@ -1,0 +1,20 @@
+ pipeline {
+  agent any
+  stages {
+    stage('Build & Test') {
+      steps {
+        withChecks(name: 'jenkins / ci', includeStage: true) {
+          sh 'mvn -B clean compile'
+        }
+       }
+    }
+  }
+  post {
+    success {
+      publishChecks name: 'jenkins / ci / Build & Test'
+    }
+    failure {
+      publishChecks name: 'jenkins / ci / Build & Test'
+    }
+  }
+}
