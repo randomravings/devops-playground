@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dbci-tools"
+version = "0.1.0"
+description = "Reusable CI utilities for SQL schema repos"
+requires-python = ">=3.9"
+dependencies = ["sqlfluff>=3.0.0"]
+
+[project.scripts]
+dbci               = "dbci_tools.cli:main"
+dbci-normalize     = "dbci_tools.normalizer:main"
+dbci-git-normalize = "dbci_tools.git_normalizer:main"
+dbci-guard         = "dbci_tools.guard:main"
+dbci-diff          = "dbci_tools.diff:main"
+dbci-lint          = "dbci_tools.linter:main"
