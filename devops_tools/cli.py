@@ -80,7 +80,7 @@ environment.aliases = ["env"]
 def env_setup():
     """Setup the DevOps environment. (Alias: up)"""
     try:
-        env.setup()
+        env.setup(create_default_org=True)
     except DevOpsError as e:
         click.echo(f"❌ Error: {e}", err=True)
         sys.exit(1)
@@ -123,6 +123,20 @@ def gitea_create_user(username, password, org, admin):
         sys.exit(1)
 
 gitea_create_user.aliases = ["user"]
+
+
+@git.command("user-exists")
+@click.argument("username")
+def gitea_user_exists(username):
+    """Check if a user exists in Gitea. (Alias: check-user)"""
+    exists = gitea.user_exists(username)
+    if exists:
+        click.echo(f"✅ User '{username}' exists")
+    else:
+        click.echo(f"❌ User '{username}' does not exist")
+        sys.exit(1)
+
+gitea_user_exists.aliases = ["check-user"]
 
 
 @git.command("create-org")
