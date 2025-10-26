@@ -21,16 +21,41 @@ def git_checkout_and_normalize(repo_path: pathlib.Path, target_dir: pathlib.Path
     # Always create target directory (even if empty for degenerate case)
     target_dir.mkdir(parents=True, exist_ok=True)
     
-    print(f"[git-normalize] Checking out {branch} from {repo_path}...")
+    print(f"[git-normalize] Fetching {branch} schema from {repo_path}...")
     
-    # First check if the branch exists and has the source directory
+    # Extract just the branch name (e.g., "origin/main" -> "main")
+    if "/" in branch:
+        remote, branch_name = branch.split("/", 1)
+    else:
+        remote = "origin"
+        branch_name = branch
+    
+    # Fetch the specific branch we need
+    print(f"[git-normalize] Fetching {remote}/{branch_name}...")
+    fetch_result = subprocess.run([
+        "git", "-C", str(repo_path), 
+        "fetch", "--depth=1", "--no-tags", remote, f"{branch_name}:refs/remotes/{remote}/{branch_name}"
+    ], capture_output=True, text=True, check=False)
+    
+    if fetch_result.returncode != 0:
+        print(f"[git-normalize] Warning: git fetch failed: {fetch_result.stderr.strip()}")
+        # Try without refspec in case the branch is already there
+        fetch_result = subprocess.run([
+            "git", "-C", str(repo_path), 
+            "fetch", "--depth=1", "--no-tags", remote, branch_name
+        ], capture_output=True, text=True, check=False)
+    
+    # Use the full ref path
+    ref = f"{remote}/{branch_name}"
+    
+    # Check if the source directory exists in the branch
     try:
         result = subprocess.run([
-            "git", "-C", str(repo_path), "ls-tree", branch, source_subdir
+            "git", "-C", str(repo_path), "ls-tree", ref, source_subdir
         ], capture_output=True, text=True, check=False)
         
         if result.returncode != 0:
-            print(f"[git-normalize] No {source_subdir} directory found in {branch} (likely initial commit)")
+            print(f"[git-normalize] No {source_subdir} found in {ref} (empty or initial commit)")
             print(f"[git-normalize] Created empty target directory: {target_dir}")
             return 0
             
@@ -44,19 +69,21 @@ def git_checkout_and_normalize(repo_path: pathlib.Path, target_dir: pathlib.Path
         checkout_dir = tmp_path / "checkout"
         checkout_dir.mkdir()
         
-        # Ensure we have the latest refs
-        subprocess.run([
-            "git", "-C", str(repo_path), "fetch", "--no-tags", "origin", "main:refs/remotes/origin/main"
-        ], check=False)
-        
-        # Checkout the specific branch to temporary directory
+        # Checkout the specific files using git archive (cleaner than checkout)
         try:
+            # Use git archive to extract files from the ref
+            archive_result = subprocess.run([
+                "git", "-C", str(repo_path),
+                "archive", ref, source_subdir
+            ], capture_output=True, check=True)
+            
+            # Extract the tar archive to checkout_dir
             subprocess.run([
-                "git", f"--work-tree={checkout_dir}", f"--git-dir={repo_path}/.git", 
-                "checkout", branch, "--", source_subdir
-            ], check=True)
-        except subprocess.CalledProcessError:
-            print(f"[git-normalize] Failed to checkout {source_subdir} from {branch}")
+                "tar", "-x", "-C", str(checkout_dir)
+            ], input=archive_result.stdout, check=True)
+            
+        except subprocess.CalledProcessError as e:
+            print(f"[git-normalize] Failed to extract {source_subdir} from {ref}: {e}")
             print(f"[git-normalize] Created empty target directory: {target_dir}")
             return 0
         
@@ -85,7 +112,7 @@ def git_checkout_and_normalize(repo_path: pathlib.Path, target_dir: pathlib.Path
             run_pg_format(target_file)
             collapse_blank_lines(target_file)
         
-        print(f"[git-normalize] Successfully normalized {len(files)} files from {branch} to {target_dir}")
+        print(f"[git-normalize] Successfully normalized {len(files)} files from {ref} to {target_dir}")
         return len(files)
 
 

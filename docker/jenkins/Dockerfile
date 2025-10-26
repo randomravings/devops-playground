@@ -31,6 +31,14 @@ RUN apt-get update && \
     && locale-gen && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Docker CLI (for Atlas docker:// dev URLs)
+RUN curl -fsSL https://get.docker.com | sh
+
+# Fix Docker socket permissions for Jenkins user
+# The docker group GID in the container needs to match the host's docker group
+# We'll handle this at runtime with an entrypoint script
+RUN usermod -aG docker jenkins
+
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 # Create a tools venv and install Python CLIs there
@@ -45,6 +53,13 @@ ENV PATH="/opt/dbci-venv/bin:${PATH}"
 # Optional: also symlink specific binaries if you prefer
 RUN ln -sf /opt/dbci-venv/bin/sqlfluff /usr/local/bin/sqlfluff
 
+# Install Atlas CLI for database schema management and diffing
+RUN curl -sSf https://atlasgo.sh | sh
+
+# Copy and set up custom entrypoint for Docker socket permissions
+COPY entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # --- OPTIONAL (commented) — enable later when you reintroduce DB checks ---
 # RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
 # RUN curl -fsSL https://github.com/k0kubun/sqldef/releases/latest/download/pgsqldef_linux_amd64.tar.gz \
@@ -55,6 +70,9 @@ RUN ln -sf /opt/dbci-venv/bin/sqlfluff /usr/local/bin/sqlfluff
     
 # Drop back to jenkins user for pipeline execution
 USER jenkins
+
+# Set custom entrypoint to fix Docker socket permissions
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Helpful defaults (optional)
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \

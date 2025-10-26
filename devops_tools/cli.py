@@ -204,15 +204,29 @@ gitea_create_repo.aliases = ["repo"]
 @click.argument("name")
 @click.option("--org", required=True, help="Organization name")
 @click.option("--team", default="", help="Team name for protection")
-def gitea_branch_protection(name, org, team):
+@click.option("--jenkins-folder", default="", help="Jenkins folder name (defaults to '{org}-folder')")
+@click.option("--enable-status-check", is_flag=True, help="Require Jenkins pipeline status check to pass")
+def gitea_branch_protection(name, org, team, jenkins_folder, enable_status_check):
     """Setup branch protection on main branch. (Alias: protect)"""
     try:
-        gitea.setup_branch_protection(name, org, team)
+        gitea.setup_branch_protection(name, org, team, jenkins_folder, enable_status_check)
     except DevOpsError as e:
         click.echo(f"❌ Error: {e}", err=True)
         sys.exit(1)
 
 gitea_branch_protection.aliases = ["protect"]
+
+
+@git.command("auto-delete-branch")
+@click.argument("name")
+@click.option("--org", required=True, help="Organization name")
+def gitea_auto_delete_branch(name, org):
+    """Enable auto-delete of branch after PR merge."""
+    try:
+        gitea.enable_auto_delete_branch(name, org)
+    except DevOpsError as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        sys.exit(1)
 
 
 @git.command("clone")

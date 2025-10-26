@@ -380,7 +380,51 @@ def create_repo(name: str, org: str, description: str = "") -> None:
         raise HTTPError(f"Failed to create repository: HTTP {status_code}\n{response}")
 
 
-def setup_branch_protection(name: str, org: str, team: str = "") -> None:
+def enable_auto_delete_branch(name: str, org: str) -> None:
+    """
+    Enable automatic deletion of head branch after PR merge.
+
+    Args:
+        name: Repository name
+        org: Organization name
+
+    Raises:
+        HTTPError: If operation fails
+    """
+    config = get_config()
+    url = f"{config.gitea_api_url}/api/v1/repos/{org}/{name}"
+
+    payload = {
+        "default_delete_branch_after_merge": True
+    }
+
+    print(f"Enabling auto-delete branch for '{name}'...")
+
+    try:
+        response = requests.patch(
+            url,
+            auth=HTTPBasicAuth(config.gitea_admin_user, config.gitea_admin_password),
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=30,
+        )
+
+        if response.status_code == 200:
+            print(f"Auto-delete branch enabled for '{name}'.")
+        else:
+            print(f"Response: {response.text}")
+            raise HTTPError(f"Failed to update repository: HTTP {response.status_code}\n{response.text}")
+    except requests.exceptions.RequestException as e:
+        raise HTTPError(f"Failed to update repository: {e}") from e
+
+
+def setup_branch_protection(
+    name: str, 
+    org: str, 
+    team: str = "",
+    jenkins_folder: str = "",
+    enable_status_check: bool = False,
+) -> None:
     """
     Set branch protection rules on the 'main' branch of a repository.
 
@@ -388,6 +432,8 @@ def setup_branch_protection(name: str, org: str, team: str = "") -> None:
         name: Repository name
         org: Organization name
         team: Optional team name for protection rules
+        jenkins_folder: Jenkins folder name (e.g., 'acme-folder'). If not provided, defaults to '{org}-folder'
+        enable_status_check: Enable Jenkins status check requirement (will construct context as '{jenkins_folder}/{name}/pipeline/head')
 
     Raises:
         HTTPError: If operation fails
@@ -411,14 +457,33 @@ def setup_branch_protection(name: str, org: str, team: str = "") -> None:
     # Create protection
     template_path = config.get_template_path("gitea/branch-protection.json")
     with open(template_path) as f:
-        template = Template(f.read())
-
+        content = f.read()
+    
+    # Load as JSON to manipulate status_check_contexts
+    protection_data = json.loads(content)
+    
+    # Replace template variables
+    protection_str = json.dumps(protection_data)
+    template = Template(protection_str)
     payload_str = template.substitute(
         TEAM=team,
         GITEA_ADMIN_USER=config.gitea_admin_user,
     )
+    
+    # Parse and update status check contexts if enabled
+    payload_data = json.loads(payload_str)
+    if enable_status_check:
+        # Auto-construct the status check context
+        folder = jenkins_folder if jenkins_folder else f"{org}-folder"
+        status_check_context = f"{folder}/{name}/pipeline/head"
+        payload_data["status_check_contexts"] = [status_check_context]
+    
+    payload_str = json.dumps(payload_data)
 
     print(f"Setting branch protection rules on 'main' branch of '{name}'...")
+    if enable_status_check:
+        folder = jenkins_folder if jenkins_folder else f"{org}-folder"
+        print(f"  - Requiring status check: {folder}/{name}/pipeline/head")
 
     status_code, response = curl_post(
         url,
@@ -522,6 +587,33 @@ def clone_repo(
         # Update remote URL (without password)
         remote_url = f"http://{username}@localhost:{config.gitea_port}/{org}/{name}.git"
         run_command(["git", "-C", str(target_dir), "remote", "set-url", "origin", remote_url])
+
+        # Set up remote branch tracking for current branch
+        try:
+            # Get current branch name
+            result = subprocess.run(
+                ["git", "-C", str(target_dir), "branch", "--show-current"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            current_branch = result.stdout.strip()
+            
+            if current_branch:
+                # Set upstream tracking for current branch
+                run_command([
+                    "git",
+                    "-C",
+                    str(target_dir),
+                    "branch",
+                    "--set-upstream-to",
+                    f"origin/{current_branch}",
+                    current_branch,
+                ])
+                print(f"Set upstream tracking for branch '{current_branch}' to 'origin/{current_branch}'.")
+        except subprocess.CalledProcessError:
+            # If we can't set upstream, just skip it (might be detached HEAD or other edge case)
+            pass
 
         print(f"Repository configured to use username '{username}' locally.")
 

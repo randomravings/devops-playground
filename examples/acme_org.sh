@@ -66,9 +66,16 @@ dt git repo dbci-tools --org "$ORG_NAME" --description "Database CI tools"
 
 # 7. Setup branch protection
 echo ""
-echo "7. Setting up branch protection..."
+echo "7. Setting up branch protection with status checks..."
 dt git protect demo-app --org "$ORG_NAME" --team developers
-dt git protect demo-db --org "$ORG_NAME" --team developers
+dt git protect demo-db --org "$ORG_NAME" --team developers --enable-status-check
+
+# 7b. Enable auto-delete branches after merge
+echo ""
+echo "7b. Enabling auto-delete branches after merge..."
+dt git auto-delete-branch demo-app --org "$ORG_NAME"
+dt git auto-delete-branch demo-db --org "$ORG_NAME"
+dt git auto-delete-branch dbci-tools --org "$ORG_NAME"
 
 # 8. Setup Jenkins webhook
 echo ""

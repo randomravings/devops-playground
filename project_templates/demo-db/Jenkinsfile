@@ -4,6 +4,7 @@ pipeline {
     environment {
         PROJECT_ROOT = "${env.WORKSPACE}"
         DBCI_PATH = "${env.WORKSPACE}/dbci-tools"
+        ATLAS_DEV_URL = "postgres://dev:dev@postgres-dev:5432/dev?search_path=public&sslmode=disable"
         PYTHONDONTWRITEBYTECODE = '1'
         PYTHONUNBUFFERED = '1'
     }
@@ -39,26 +40,26 @@ pipeline {
         
         stage('BUILD') {
             steps {
-                echo "Running BUILD stage - normalizing SQL schema files..."
+                echo "Running BUILD stage - generating HCL schema from SQL files..."
                 script {
                     sh "cd ${env.DBCI_PATH} && ./run.sh BUILD ${env.PROJECT_ROOT}"
                 }
                 
-                // Archive normalized schema files
+                // Archive generated HCL schema file
                 archiveArtifacts(
-                    artifacts: '.out/db/schema/**/*.sql',
+                    artifacts: 'target/schema.hcl',
                     allowEmptyArchive: true,
                     fingerprint: true
                 )
             }
             post {
                 success {
-                    echo "✅ BUILD stage completed successfully - schema normalized"
-                    publishChecks name: 'BUILD', title: 'Schema Build', summary: 'Schema normalized successfully', conclusion: 'SUCCESS'
+                    echo "✅ BUILD stage completed successfully - HCL schema generated"
+                    publishChecks name: 'BUILD', title: 'Schema Build', summary: 'HCL schema generated successfully', conclusion: 'SUCCESS'
                 }
                 failure {
-                    echo "❌ BUILD stage failed - schema normalization error"
-                    publishChecks name: 'BUILD', title: 'Schema Build', summary: 'Schema normalization error', conclusion: 'FAILURE'
+                    echo "❌ BUILD stage failed - HCL schema generation error"
+                    publishChecks name: 'BUILD', title: 'Schema Build', summary: 'HCL schema generation error', conclusion: 'FAILURE'
                 }
             }
         }
@@ -89,9 +90,9 @@ pipeline {
                     sh "cd ${env.DBCI_PATH} && ./run.sh DIFF ${env.PROJECT_ROOT}"
                 }
                 
-                // Archive diff results
+                // Archive diff results including baseline main.hcl
                 archiveArtifacts(
-                    artifacts: '.out/schema-changes.*',
+                    artifacts: 'target/atlas.migration.*, target/main.hcl, target/schema.hcl',
                     allowEmptyArchive: true,
                     fingerprint: true
                 )
@@ -100,17 +101,21 @@ pipeline {
                 success {
                     echo "✅ DIFF stage completed successfully - schema diff generated"
                     script {
-                        // Check if change script exists and show summary
-                        def changeScriptExists = fileExists('.out/schema-changes.change-script.sql')
-                        def diffExists = fileExists('.out/schema-changes.diff')
+                        // Check if migration and reports exist
+                        def migrationExists = fileExists('target/atlas.migration.sql')
+                        def reportExists = fileExists('target/atlas.migration.schema-report.md')
+                        def mainHclExists = fileExists('target/main.hcl')
                         
                         def summary = "Schema changes analyzed"
-                        if (changeScriptExists) {
-                            echo "📄 Schema change script generated: .out/schema-changes.change-script.sql"
-                            summary += " (change script generated)"
+                        if (migrationExists) {
+                            echo "📄 Atlas migration SQL generated: target/atlas.migration.sql"
+                            summary += " (migration SQL generated)"
                         }
-                        if (diffExists) {
-                            echo "📊 Schema diff generated: .out/schema-changes.diff"
+                        if (reportExists) {
+                            echo "📊 Schema report generated: target/atlas.migration.schema-report.md"
+                        }
+                        if (mainHclExists) {
+                            echo "📋 Main branch baseline saved: target/main.hcl"
                         }
                         
                         publishChecks name: 'DIFF', title: 'Schema Diff', summary: summary, conclusion: 'SUCCESS'
@@ -159,15 +164,16 @@ pipeline {
             
             Pipeline Summary:
             ✅ DBCI Tools: Cloned and ready
-            ✅ BUILD: Schema normalized to .out/db/schema/
-            ✅ LINT: SQL code quality validated
-            ✅ DIFF: Schema changes analyzed and scripts generated
+            ✅ BUILD: HCL schema generated to target/schema.hcl
+            ✅ LINT: SQL code quality validated (SQLFluff)
+            ✅ DIFF: Schema changes analyzed with Atlas CLI
             ✅ GUARD: Schema validation passed
             
             Check the archived artifacts for:
-            - Normalized schema files (.out/db/schema/)
-            - Schema change script (.out/schema-changes.change-script.sql)
-            - Schema diff (.out/schema-changes.diff)
+            - HCL schema files (target/schema.hcl, target/main.hcl)
+            - Atlas migration SQL (target/atlas.migration.sql)
+            - Schema analysis report (target/atlas.migration.schema-report.md)
+            - Schema changes JSON (target/atlas.migration.schema-changes.json)
             """
             
             script {

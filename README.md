@@ -71,5 +71,15 @@ The user example clones a repo to your local filesystem (`~/Local/john/db-demo`)
 
 - Maven (for Java builds)
 - Python 3 + venv
-- pgformatter (PostgreSQL formatter)
 - sqlfluff >= 3.0.0 (SQL linter)
+- Atlas CLI (database schema management and diffing)
+- Docker CLI (for Atlas ephemeral dev databases)
+
+**For local DBCI development:**
+
+- Python 3.9+
+- Atlas CLI: `curl -sSf https://atlasgo.sh | sh`
+- SQLFluff: `pip install "sqlfluff>=3.0.0"`
+- Docker (for Atlas dev database - uses `docker://postgres/15/dev`)
+
+Set `ATLAS_DEV_URL` environment variable to override the default dev database URL.
