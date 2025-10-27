@@ -7,14 +7,18 @@ def check_migration_changes():
     if not changes_file.exists():
         # In CI/Jenkins context, this file MUST exist from DIFF stage
         # Return a special violation to fail the build
-        return [("missing_migration_file", 
-                 "atlas.migration.schema-changes.json not found - DIFF stage must run before GUARD")]
+        return [(
+            "missing_migration_file", 
+            "atlas.migration.schema-changes.json not found - DIFF stage must run before GUARD"
+        )]
     
     try:
         changes = json.loads(changes_file.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as e:
-        return [("invalid_migration_file", 
-                 f"Could not parse {changes_file}: {e}")]
+        return [(
+            "invalid_migration_file", 
+            f"Could not parse {changes_file}: {e}"
+        )]
     
     violations = []
     
