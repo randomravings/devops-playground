@@ -1,0 +1,138 @@
+pipeline {
+    agent any
+    
+    environment {
+        PROJECT_ROOT = "${env.WORKSPACE}"
+        ETL_FRAMEWORK_PATH = "${env.WORKSPACE}/etl-framework"
+        PYTHONDONTWRITEBYTECODE = '1'
+        PYTHONUNBUFFERED = '1'
+        // Test configuration
+        WAREHOUSE_TYPE = 'csv'
+        SOURCE_DATA_PATH = 'tests/data'
+    }
+    
+    stages {
+        stage('Prepare ETL Framework') {
+            steps {
+                echo "Preparing ETL Framework repository..."
+                script {
+                    // Derive ETL Framework repository URL from the original GIT_URL
+                    def originalUrl = env.GIT_URL
+                    def frameworkRepoUrl = ""
+                    
+                    if (originalUrl) {
+                        // Replace the repository name with 'etl-framework'
+                        frameworkRepoUrl = originalUrl.replaceAll(/\/([^\/]+)\.git$/, '/etl-framework.git')
+                        echo "Original repository: ${originalUrl}"
+                        echo "ETL Framework repository: ${frameworkRepoUrl}"
+                    } else {
+                        error("GIT_URL environment variable is not set. Cannot derive ETL Framework repository URL.")
+                    }
+                    
+                    // Clean up any existing etl-framework directory and clone
+                    sh "rm -rf etl-framework && git clone --branch main --single-branch --depth 1 '${frameworkRepoUrl}' etl-framework"
+                    
+                    // Make run.sh executable
+                    sh "cd ${env.ETL_FRAMEWORK_PATH} && chmod +x run.sh"
+                    
+                    echo "ETL Framework cloned to: ${env.ETL_FRAMEWORK_PATH}"
+                }
+            }
+        }
+        
+        stage('Setup Environment') {
+            steps {
+                echo "Setting up Python virtual environment and dependencies..."
+                script {
+                    sh """
+                        cd ${env.ETL_FRAMEWORK_PATH}
+                        ./run.sh setup --project-dir ${env.PROJECT_ROOT} --framework-path ${env.ETL_FRAMEWORK_PATH} --warehouse csv --no-ui
+                    """
+                }
+            }
+            post {
+                success {
+                    echo "✅ Environment setup completed successfully"
+                    publishChecks name: 'SETUP', title: 'Environment Setup', summary: 'Virtual environment and dependencies installed', conclusion: 'SUCCESS'
+                }
+                failure {
+                    echo "❌ Environment setup failed"
+                    publishChecks name: 'SETUP', title: 'Environment Setup', summary: 'Failed to set up environment', conclusion: 'FAILURE'
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                echo "Running pytest test suite..."
+                script {
+                    sh """
+                        cd ${env.ETL_FRAMEWORK_PATH}
+                        ./run.sh test --project-dir ${env.PROJECT_ROOT}
+                    """
+                }
+            }
+            post {
+                success {
+                    echo "✅ All tests passed successfully"
+                    publishChecks name: 'TESTS', title: 'Test Suite', summary: 'All tests passed', conclusion: 'SUCCESS'
+                }
+                failure {
+                    echo "❌ Test failures detected"
+                    publishChecks name: 'TESTS', title: 'Test Suite', summary: 'Test failures detected', conclusion: 'FAILURE'
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "Pipeline execution completed"
+            
+            // Clean up Python cache and temporary files
+            script {
+                sh """
+                    find ${env.PROJECT_ROOT} -name '*.pyc' -delete 2>/dev/null || true
+                    find ${env.PROJECT_ROOT} -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
+                    find ${env.PROJECT_ROOT} -name '.pytest_cache' -type d -exec rm -rf {} + 2>/dev/null || true
+                """
+            }
+        }
+        
+        success {
+            echo """
+            🎉 Pipeline completed successfully! 
+            
+            Pipeline Summary:
+            ✅ ETL Framework: Cloned and ready
+            ✅ SETUP: Virtual environment created and dependencies installed
+            ✅ TESTS: All pytest tests passed
+            
+            The demo-etl project is working correctly with the etl-framework.
+            """
+            
+            script {
+                publishChecks name: 'ETL-Pipeline', title: 'ETL Pipeline Complete', summary: 'All stages completed successfully', conclusion: 'SUCCESS'
+            }
+        }
+        
+        failure {
+            echo """
+            ❌ Pipeline failed at one or more stages.
+            
+            Check the stage logs above for detailed error information.
+            Common issues:
+            - Python version mismatch (requires Python 3.12+)
+            - Missing dependencies in pyproject.toml
+            - Test failures in pytest suite
+            - Git repository access issues (Clone stage)
+            """
+        }
+        
+        cleanup {
+            // Optional: Clean up ETL framework directory if desired
+            // sh "rm -rf ${env.ETL_FRAMEWORK_PATH}"
+            echo "Pipeline cleanup completed"
+        }
+    }
+}
