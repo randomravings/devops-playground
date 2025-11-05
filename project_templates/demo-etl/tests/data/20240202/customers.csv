@@ -1,0 +1,5 @@
+extract_date,customer_id,email,first_name,last_name,phone,segment
+2024-02-02,CUST-001,alice@example.com,Alice,Smith,555-1001,SMB
+2024-02-02,CUST-002,bob@example.com,Robert,Lee,555-2000,Premium
+2024-02-02,CUST-003,carla@example.com,Carla,Gomez,555-3000,SMB
+2024-02-02,CUST-004,diana@example.com,Diana,Chen,555-4000,Enterprise

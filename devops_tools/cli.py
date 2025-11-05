@@ -256,6 +256,21 @@ def gitea_setup_webhook():
 gitea_setup_webhook.aliases = ["webhook"]
 
 
+@git.command("init-repo")
+@click.argument("repo_name")
+@click.option("--org", required=True, help="Organization name")
+@click.option("--template", required=True, help="Template name (e.g., dbci-tools, demo-dw, demo-etl)")
+def gitea_init_repo(repo_name, org, template):
+    """Initialize a repository with a template. (Alias: init)"""
+    try:
+        project.init_and_push_repo(repo_name, org, template)
+    except DevOpsError as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        sys.exit(1)
+
+gitea_init_repo.aliases = ["init"]
+
+
 # Jenkins commands
 @cli.group(name="ci", cls=AliasedGroup)
 def ci():

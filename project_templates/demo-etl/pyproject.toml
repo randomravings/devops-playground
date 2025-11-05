@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "demo-etl"
+version = "0.1.0"
+description = "Dagster demo ETL project template"
+authors = [{name = "Your Team"}]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "dagster>=1.7.0",
+    "dagster-webserver>=1.7.0",
+    "pandas>=2.0",
+    "psycopg[binary]>=3.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+]
+
+[tool.setuptools]
+packages = ["demo_etl"]
+
+[tool.dagster]
+module_name = "demo_etl"
+
+[tool.dg]
+directory_type = "project"
+
+[tool.dg.project]
+root_module = "demo_etl"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["demo_etl"]
+filterwarnings = [
+    "ignore",
+    "default::DeprecationWarning:demo_etl.*",
+    "default::UserWarning:demo_etl.*",
+]

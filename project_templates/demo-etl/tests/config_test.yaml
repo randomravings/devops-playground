@@ -1,0 +1,5 @@
+# Test configuration - uses CSV files for warehouse
+resources:
+  warehouse_io_manager:
+    config:
+      base_path: ".data/warehouse"

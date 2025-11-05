@@ -1,0 +1,4 @@
+extract_date,product_group_id,category,brand
+2024-02-01,PG-SOFTWARE,Software,AcmeSoft
+2024-02-01,PG-HARDWARE,Hardware,DataBox
+2024-02-01,PG-SERVICES,Services,AcmeSoft

@@ -1,0 +1,4 @@
+extract_date,sku,name,description,unit_price,currency_code,active,launch_date,discontinued_at,product_group_id
+2024-02-01,SKU-100,Analytics Suite,"Annual subscription",100.00,USD,true,2023-11-01,,PG-SOFTWARE
+2024-02-01,SKU-200,Data Warehouse Appliance,"Rack mounted DW appliance",15000.00,USD,true,2023-06-15,,PG-HARDWARE
+2024-02-01,SKU-300,Training Package,"Onboarding and enablement services",2500.00,USD,true,2023-09-01,,PG-SERVICES

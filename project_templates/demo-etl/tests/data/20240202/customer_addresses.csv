@@ -1,0 +1,5 @@
+extract_date,customer_id,address_line1,address_line2,city,state_province,postal_code,country
+2024-02-02,CUST-001,10 Market St,,Seattle,WA,98101,US
+2024-02-02,CUST-002,77 Industrial Rd,,Austin,TX,73301,US
+2024-02-02,CUST-003,45 Queen St W,Suite 200,Toronto,ON,M5H2M9,CA
+2024-02-02,CUST-004,99 Broadway,,New York,NY,10001,US

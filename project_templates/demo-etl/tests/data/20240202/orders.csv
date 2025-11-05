@@ -1,0 +1,2 @@
+extract_date,order_id,order_number,customer_id,order_date,order_timestamp,status,channel,payment_method,shipping_cost,tax_amount,total_amount
+2024-02-02,1004,SO-1004,CUST-004,2024-02-02,2024-02-02T09:00:00Z,NEW,Web,Credit Card,8.00,3.50,500.00

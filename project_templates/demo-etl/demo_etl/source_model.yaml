@@ -1,0 +1,254 @@
+# ETL Data Model Configuration
+# Separates source structure from analytical model (dimensions and facts)
+
+# ============================================================================
+# SOURCES: Physical source file structure (CSV, database tables, etc.)
+# ============================================================================
+sources:
+  customer_addresses:
+    ext_name: "customer_addresses.csv"
+    fields:
+      - name: extract_date
+        dtype: datetime64[ns]
+      - name: customer_id
+        dtype: string
+      - name: address_line1
+        dtype: string
+      - name: address_line2
+        dtype: string
+      - name: city
+        dtype: string
+      - name: state_province
+        dtype: string
+      - name: postal_code
+        dtype: string
+      - name: country
+        dtype: string
+    primary_key: [customer_id]
+
+  customers:
+    ext_name: "customers.csv"
+    fields:
+      - name: extract_date
+        dtype: datetime64[ns]
+      - name: customer_id
+        dtype: string
+      - name: first_name
+        dtype: string
+      - name: last_name
+        dtype: string
+      - name: email
+        dtype: string
+      - name: phone
+        dtype: string
+      - name: segment
+        dtype: string
+    primary_key: [customer_id]
+    relations:
+      - foreign_key: [customer_id]
+        primary: customer_addresses
+
+  product_groups:
+    ext_name: "product_groups.csv"
+    fields:
+      - name: extract_date
+        dtype: datetime64[ns]
+      - name: product_group_id
+        dtype: string
+      - name: category
+        dtype: string
+      - name: brand
+        dtype: string
+    primary_key: [product_group_id]
+
+  products:
+    ext_name: "products.csv"
+    fields:
+      - name: extract_date
+        dtype: datetime64[ns]
+      - name: sku
+        dtype: string
+      - name: name
+        dtype: string
+      - name: product_group_id
+        dtype: string
+      - name: unit_price
+        dtype: Float32
+      - name: currency_code
+        dtype: string
+      - name: launch_date
+        dtype: datetime64[ns]
+      - name: discontinued_at
+        dtype: datetime64[ns]
+    primary_key: [sku]
+    relations:
+      - foreign_key: [product_group_id]
+        primary: product_groups
+
+  orders:
+    ext_name: "orders.csv"
+    fields:
+      - name: extract_date
+        dtype: datetime64[ns]
+      - name: order_id
+        dtype: string
+      - name: order_number
+        dtype: string
+      - name: customer_id
+        dtype: string
+      - name: order_date
+        dtype: datetime64[ns]
+      - name: order_timestamp
+        dtype: datetime64[ns]
+      - name: status
+        dtype: string
+      - name: channel
+        dtype: string
+      - name: payment_method
+        dtype: string
+      - name: shipping_cost
+        dtype: Float32
+      - name: tax_amount
+        dtype: Float32
+      - name: total_amount
+        dtype: Float32
+    primary_key: [order_id]
+    relations:
+      - foreign_key: [customer_id]
+        primary: customers
+
+  order_items:
+    ext_name: "order_items.csv"
+    fields:
+      - name: extract_date
+        dtype: datetime64[ns]
+      - name: order_id
+        dtype: string
+      - name: line_number
+        dtype: Int32
+      - name: sku
+        dtype: string
+      - name: quantity
+        dtype: Int32
+      - name: unit_price
+        dtype: Float32
+      - name: discount
+        dtype: Float32
+      - name: line_total
+        dtype: Float32
+      - name: line_timestamp
+        dtype: datetime64[ns]
+    primary_key: [order_id, line_number]
+    relations:
+      - foreign_key: [order_id]
+        primary: orders
+      - foreign_key: [sku]
+        primary: products
+
+# ============================================================================
+# DIMENSIONS: Analytical model for slowly changing dimensions
+# ============================================================================
+dimensions:
+  customers:
+    sources:
+      customers:
+        fields:
+          - name: customer_id
+            type: KEY
+          - name: first_name
+            type: T1
+          - name: last_name
+            type: T1
+          - name: email
+            type: T1
+          - name: phone
+            type: T1
+          - name: segment
+            type: T2
+      customer_addresses:
+        fields:
+          - name: address_line1
+            type: T2
+          - name: address_line2
+            type: T2
+          - name: city
+            type: T2
+          - name: state_province
+            type: T2
+          - name: postal_code
+            type: T2
+          - name: country
+            type: T2
+
+  products:
+    sources:
+      products:
+        fields:
+          - name: sku
+            type: KEY
+          - name: name
+            type: T2
+          - name: unit_price
+            type: T2
+          - name: currency_code
+            type: T1
+          - name: launch_date
+            type: T1
+          - name: discontinued_at
+            type: T1
+          - name: product_group_id
+            type: T2
+            alias: grp_id
+      product_groups:
+        fields:
+          - name: category
+            type: T1
+          - name: brand
+            type: T1
+
+# ============================================================================
+# FACTS: Analytical model for fact tables
+# ============================================================================
+facts:
+  orders:
+    sources:
+      orders:
+        fields:
+          - name: order_id
+            type: KEY
+          - name: order_number
+            type: ATT
+          - name: customer_id
+            type: ATT
+          - name: order_date
+            type: ATT
+          - name: order_timestamp
+            type: ATT
+          - name: status
+            type: ATT
+          - name: channel
+            type: ATT
+          - name: payment_method
+            type: ATT
+          - name: shipping_cost
+            type: ATT
+          - name: tax_amount
+            type: ATT
+          - name: total_amount
+            type: ATT
+      order_items:
+        fields:
+          - name: line_number
+            type: KEY
+          - name: sku
+            type: ATT
+          - name: quantity
+            type: ATT
+          - name: unit_price
+            type: ATT
+          - name: discount
+            type: ATT
+          - name: line_total
+            type: ATT
+          - name: line_timestamp
+            type: ATT

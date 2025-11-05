@@ -133,7 +133,7 @@ def diff_schema(project_root: pathlib.Path):
         if result.returncode != 0 or not list(main_schema_dir.glob("*.sql")):
             if result.returncode != 0:
                 print(f"⚠️  dbci-git-normalize failed with exit code {result.returncode}")
-            print("⚠️  Warning: No schema found in origin/main (branch may be empty)")
+            print("ℹ️  Info: No schema found in origin/main (branch may be empty)")
             print("    Comparing against empty schema...")
             main_schema_dir.mkdir(parents=True, exist_ok=True)
             # Create empty main.hcl for consistency

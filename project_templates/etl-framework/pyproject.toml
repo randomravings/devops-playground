@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dagster-etl-framework"
+version = "0.1.0"
+description = "A modular ETL framework for Dagster with built-in SCD Type 2 support and declarative asset generation"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+keywords = ["dagster", "etl", "data-engineering", "scd-type-2", "data-warehouse"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "dagster>=1.8.0",
+    "pandas>=2.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+postgres = [
+    "psycopg>=3.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+etl-framework = "dagster_etl_framework.main:main"
+etl-setup = "dagster_etl_framework.setup:main"
+etl-teardown = "dagster_etl_framework.setup:teardown"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/dagster-etl-framework"
+Documentation = "https://github.com/yourusername/dagster-etl-framework#readme"
+Repository = "https://github.com/yourusername/dagster-etl-framework"
+Issues = "https://github.com/yourusername/dagster-etl-framework/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dagster_etl_framework"]
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

@@ -1,0 +1,13 @@
+services:
+
+  postgres-dwh:
+    image: postgres:15
+    container_name: postgres-dwh
+    environment:
+      - POSTGRES_PASSWORD=dwh
+      - POSTGRES_USER=dwh
+      - POSTGRES_DB=dwh
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"

@@ -60,22 +60,24 @@ dt git add-member developers --org "$ORG_NAME" --username jane
 # 6. Create repositories
 echo ""
 echo "6. Creating repositories..."
-dt git repo demo-app --org "$ORG_NAME" --description "Demo application"
-dt git repo demo-db --org "$ORG_NAME" --description "Demo database"
 dt git repo dbci-tools --org "$ORG_NAME" --description "Database CI tools"
+dt git repo etl-framework --org "$ORG_NAME" --description "ETL Framework tools"
+dt git repo demo-dw --org "$ORG_NAME" --description "Demo database"
+dt git repo demo-etl --org "$ORG_NAME" --description "Demo ETL application"
 
 # 7. Setup branch protection
 echo ""
 echo "7. Setting up branch protection with status checks..."
-dt git protect demo-app --org "$ORG_NAME" --team developers
-dt git protect demo-db --org "$ORG_NAME" --team developers --enable-status-check
+dt git protect demo-dw --org "$ORG_NAME" --team developers --enable-status-check
+dt git protect demo-etl --org "$ORG_NAME" --team developers --enable-status-check
 
 # 7b. Enable auto-delete branches after merge
 echo ""
 echo "7b. Enabling auto-delete branches after merge..."
-dt git auto-delete-branch demo-app --org "$ORG_NAME"
-dt git auto-delete-branch demo-db --org "$ORG_NAME"
 dt git auto-delete-branch dbci-tools --org "$ORG_NAME"
+dt git auto-delete-branch etl-framework --org "$ORG_NAME"
+dt git auto-delete-branch demo-dw --org "$ORG_NAME"
+dt git auto-delete-branch demo-etl --org "$ORG_NAME"
 
 # 8. Setup Jenkins webhook
 echo ""
@@ -92,42 +94,11 @@ echo ""
 echo "10. Creating Jenkins organization folder for '$ORG_NAME'..."
 dt ci org "${ORG_NAME}-folder" --org "$ORG_NAME" --credentials gitea-credentials --description "Jenkins org folder for $ORG_NAME repos"
 
-# 11. Initialize dbci-tools repository (using Python for this complex step)
+# 11. Initialize dbci-tools repository
 echo ""
 echo "11. Initializing dbci-tools repository..."
-python3 << 'PYTHON_SCRIPT'
-import tempfile
-from pathlib import Path
-from devops_tools import config, gitea, project
-
-cfg = config.get_config()
-org_name = "acme"
-
-if gitea.repo_file_exists("dbci-tools", org_name, "pyproject.toml"):
-    print("   dbci-tools already initialized; skipping.")
-else:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        clone_dest = Path(tmpdir)
-        
-        print("   Cloning dbci-tools...")
-        gitea.clone_repo(
-            "dbci-tools",
-            org_name,
-            str(clone_dest),
-            cfg.gitea_admin_user,
-            cfg.gitea_admin_password,
-        )
-        
-        repo_path = clone_dest / "dbci-tools"
-        
-        print("   Copying template content...")
-        project.init_dbci_tools(str(repo_path))
-        
-        print("   Committing and pushing...")
-        project.init_commit(str(repo_path), "Initial commit: Add dbci-tools template")
-        
-        print("   ✅ dbci-tools initialized")
-PYTHON_SCRIPT
+dt git init dbci-tools --org "$ORG_NAME" --template dbci-tools
+dt git init etl-framework --org "$ORG_NAME" --template etl-framework
 
 echo ""
 echo "============================================================"
@@ -144,7 +115,7 @@ echo "  Team Members:  john / secret, jane / secret"
 echo ""
 echo "Organization: $ORG_NAME"
 echo "  Team: developers (john, jane)"
-echo "  Repos: demo-app, demo-db, dbci-tools"
+echo "  Repos: dbci-tools, demo-db, demo-etl"
 echo ""
 echo "Next steps:"
 echo "  - Browse Gitea org: http://localhost:3000/$ORG_NAME"
