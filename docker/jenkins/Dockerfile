@@ -18,12 +18,41 @@ RUN chmod +x /usr/local/bin/jenkins-cli
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# OS deps (incl. python3-venv for creating venvs) + UTF-8 locale
-# Debian Trixie includes Python 3.12, so we install it directly
+# Install build dependencies for Python 3.12
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      python3 python3-venv python3-pip \
-      python3.12 python3.12-venv python3.12-dev \
+      build-essential \
+      zlib1g-dev \
+      libncurses5-dev \
+      libgdbm-dev \
+      libnss3-dev \
+      libssl-dev \
+      libreadline-dev \
+      libffi-dev \
+      libsqlite3-dev \
+      libbz2-dev \
+      liblzma-dev \
+      wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and install Python 3.12
+RUN cd /tmp && \
+    wget https://www.python.org/ftp/python/3.12.7/Python-3.12.7.tar.xz && \
+    tar -xf Python-3.12.7.tar.xz && \
+    cd Python-3.12.7 && \
+    ./configure --enable-optimizations --prefix=/usr/local && \
+    make -j$(nproc) && \
+    make altinstall && \
+    cd / && \
+    rm -rf /tmp/Python-3.12.7*
+
+# Create symlinks for python3.12
+RUN ln -sf /usr/local/bin/python3.12 /usr/bin/python3.12 && \
+    ln -sf /usr/local/bin/pip3.12 /usr/bin/pip3.12
+
+# OS deps + UTF-8 locale
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
       pgformatter \
       diffutils \
       git openssh-client \
@@ -45,7 +74,7 @@ ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 # Create a tools venv and install Python CLIs there
 # (Avoids system-wide pip installs, solves PEP 668)
-RUN python3 -m venv /opt/dbci-venv && \
+RUN python3.12 -m venv /opt/dbci-venv && \
     /opt/dbci-venv/bin/pip install --upgrade pip && \
     /opt/dbci-venv/bin/pip install "sqlfluff>=3.0.0"
 

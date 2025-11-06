@@ -47,7 +47,7 @@ See how commands compose together:
 
 ```bash
 ./examples/acme_org.sh                              # Full org setup
-./examples/acme_user_local.sh john db-demo ~/Local  # Clone to local workspace
+./examples/acme_user_local.sh john db-demo ~/Local  # Clone to local workspace for 'john'
 ./examples/teardown.sh                              # Cleanup
 ```
 

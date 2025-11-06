@@ -24,6 +24,7 @@ Commands:
   setup      Setup environment (creates .venv, installs deps, starts UI)
   run        Run pipeline for specific date
   test       Run tests
+  validate   Validate source model against database schema (HCL)
   teardown   Clean up environment
 
 Examples:
@@ -31,11 +32,13 @@ Examples:
   ./run.sh setup --project-dir ../demo-etl --warehouse csv
   ./run.sh run --project-dir ../demo-etl -d 2024-02-01
   ./run.sh test --project-dir ../demo-etl
+  ./run.sh validate --project-dir ../demo-etl --hcl ../demo-dw/target/schema.hcl
   ./run.sh teardown --project-dir ../demo-etl --force
 
   # Via Python directly
   etl-framework setup --project-dir ../demo-etl --warehouse csv
   etl-framework run --project-dir ../demo-etl -d 2024-02-01
+  etl-framework validate --project-dir ../demo-etl --hcl ../demo-dw/target/schema.hcl
 
 Help:
   etl-framework <command> -h    Show detailed help for a command
@@ -44,7 +47,7 @@ Help:
     
     parser.add_argument(
         "command",
-        choices=["setup", "teardown", "run", "test"],
+        choices=["setup", "teardown", "run", "test", "validate"],
         help="Command to execute"
     )
     parser.add_argument(
@@ -73,6 +76,10 @@ Help:
     elif args.command == "test":
         from .commands import test_command
         return test_command(args.args)
+    
+    elif args.command == "validate":
+        from .commands import validate_command
+        return validate_command(args.args)
     
     else:
         parser.print_help()

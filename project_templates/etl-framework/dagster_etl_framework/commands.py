@@ -289,3 +289,168 @@ Example:
     except KeyboardInterrupt:
         print("\n✗ Tests interrupted by user")
         return 130
+
+
+def validate_command(args: List[str]) -> int:
+    """
+    Validate ETL source model against database schema (HCL file).
+    
+    Args:
+        args: Command arguments
+        
+    Returns:
+        Exit code (0 if validation passes, 1 if errors found)
+    """
+    parser = argparse.ArgumentParser(
+        prog="etl-framework validate",
+        description="Validate ETL source model against database schema",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Example:
+  ./run.sh validate --project-dir ../demo-etl --hcl-file ../demo-dw/target/schema.hcl
+  ./run.sh validate -p ../demo-etl -s demo_etl/source_model.yaml --hcl ../demo-dw/target/schema.hcl
+        """
+    )
+    
+    parser.add_argument(
+        "-p", "--project-dir",
+        default=".",
+        help="ETL project directory (default: .)"
+    )
+    parser.add_argument(
+        "-s", "--source-model",
+        help="Path to source model YAML file (default: auto-detect from project)"
+    )
+    parser.add_argument(
+        "--hcl-file", "--hcl",
+        required=True,
+        help="Path to HCL schema file (from dbci-tools BUILD)"
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show detailed validation results"
+    )
+    
+    parsed_args = parser.parse_args(args)
+    
+    # Resolve paths
+    project_dir = Path(parsed_args.project_dir).resolve()
+    hcl_file = Path(parsed_args.hcl_file).resolve()
+    
+    # Validate HCL file exists
+    if not hcl_file.exists():
+        print(f"✗ Error: HCL file not found: {hcl_file}")
+        print("")
+        print("Please run dbci BUILD on the database project first:")
+        print("  cd ../demo-dw")
+        print("  dbci BUILD .")
+        return 1
+    
+    # Find source model file
+    if parsed_args.source_model:
+        source_model_file = Path(parsed_args.source_model).resolve()
+    else:
+        # Auto-detect: look for source_model.yaml in project
+        # Try to find the project package directory
+        pyproject = project_dir / "pyproject.toml"
+        if not pyproject.exists():
+            print(f"✗ Error: pyproject.toml not found in {project_dir}")
+            return 1
+        
+        # Read project name from pyproject.toml
+        import re
+        project_name = None
+        with open(pyproject) as f:
+            for line in f:
+                match = re.match(r'name\s*=\s*["\']([^"\']+)["\']', line.strip())
+                if match:
+                    project_name = match.group(1).replace('-', '_')
+                    break
+        
+        if not project_name:
+            print(f"✗ Error: Could not determine project name from pyproject.toml")
+            return 1
+        
+        # Look for source_model.yaml in project package
+        source_model_file = project_dir / project_name / "source_model.yaml"
+        if not source_model_file.exists():
+            print(f"✗ Error: source_model.yaml not found at {source_model_file}")
+            print("  Please specify with --source-model flag")
+            return 1
+    
+    print("=" * 60)
+    print("Validating ETL Source Model")
+    print("=" * 60)
+    print(f"Source Model: {source_model_file}")
+    print(f"HCL Schema:   {hcl_file}")
+    print("")
+    
+    # Load source model
+    sys.path.insert(0, str(project_dir))
+    
+    try:
+        from dagster_etl_framework import load_source_model, validate_model
+        
+        source_model = load_source_model(source_model_file)
+        print(f"✓ Loaded source model with {len(source_model.dimensions)} dimensions and {len(source_model.facts)} facts")
+        
+        # Run validation
+        result = validate_model(source_model, hcl_file)
+        
+        print(f"✓ Validated {result.tables_validated} tables and {result.columns_validated} columns")
+        print("")
+        
+        # Report results
+        if not result.issues:
+            print("=" * 60)
+            print("✅ Validation passed! No issues found.")
+            print("=" * 60)
+            return 0
+        
+        # Show errors
+        errors = result.get_errors()
+        if errors:
+            print(f"❌ Found {len(errors)} error(s):")
+            print("")
+            for issue in errors:
+                print(f"  {issue}")
+            print("")
+        
+        # Show warnings
+        warnings = result.get_warnings()
+        if warnings:
+            print(f"⚠️  Found {len(warnings)} warning(s):")
+            print("")
+            for issue in warnings:
+                print(f"  {issue}")
+            print("")
+        
+        # Show info if verbose
+        if parsed_args.verbose:
+            infos = result.get_infos()
+            if infos:
+                print(f"ℹ️  Found {len(infos)} info message(s):")
+                print("")
+                for issue in infos:
+                    print(f"  {issue}")
+                print("")
+        
+        # Summary
+        print("=" * 60)
+        if result.has_errors:
+            print(f"❌ Validation failed: {len(errors)} error(s), {len(warnings)} warning(s)")
+            print("=" * 60)
+            return 1
+        else:
+            print(f"✅ Validation passed with {len(warnings)} warning(s)")
+            print("=" * 60)
+            return 0
+            
+    except Exception as e:
+        print(f"✗ Error during validation: {e}")
+        if parsed_args.verbose:
+            import traceback
+            traceback.print_exc()
+        return 1
+

@@ -49,7 +49,7 @@ if [ "$COMMAND" = "setup" ]; then
 fi
 
 # For other commands, check if project venv exists and use it
-if [ "$COMMAND" = "run" ] || [ "$COMMAND" = "test" ] || [ "$COMMAND" = "teardown" ]; then
+if [ "$COMMAND" = "run" ] || [ "$COMMAND" = "test" ] || [ "$COMMAND" = "validate" ] || [ "$COMMAND" = "teardown" ]; then
   # Resolve to absolute path
   PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || echo "$PROJECT_DIR")"
   PROJECT_VENV="$PROJECT_DIR/.venv"
@@ -87,6 +87,6 @@ if [ -z "$COMMAND" ] || [ "$COMMAND" = "-h" ] || [ "$COMMAND" = "--help" ]; then
   python3.12 "$DIR/dagster_etl_framework/setup_standalone.py" "$@"
 else
   echo "✗ Error: Unknown command '$COMMAND'"
-  echo "  Valid commands: setup, run, test, teardown"
+  echo "  Valid commands: setup, run, test, validate, teardown"
   exit 1
 fi

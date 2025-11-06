@@ -4,11 +4,15 @@ pipeline {
     environment {
         PROJECT_ROOT = "${env.WORKSPACE}"
         ETL_FRAMEWORK_PATH = "${env.WORKSPACE}/etl-framework"
+        DEMO_DW_PATH = "${env.WORKSPACE}/demo-dw"
+        DBCI_TOOLS_PATH = "${env.WORKSPACE}/dbci-tools"
         PYTHONDONTWRITEBYTECODE = '1'
         PYTHONUNBUFFERED = '1'
         // Test configuration
         WAREHOUSE_TYPE = 'csv'
         SOURCE_DATA_PATH = 'tests/data'
+        // Atlas configuration for HCL generation - use postgres-dev container
+        ATLAS_DEV_URL = 'postgres://dev:dev@postgres-dev:5432/dev?search_path=public&sslmode=disable'
     }
     
     stages {
@@ -36,6 +40,98 @@ pipeline {
                     sh "cd ${env.ETL_FRAMEWORK_PATH} && chmod +x run.sh"
                     
                     echo "ETL Framework cloned to: ${env.ETL_FRAMEWORK_PATH}"
+                }
+            }
+        }
+        
+        stage('Prepare Database Schema') {
+            steps {
+                echo "Preparing demo-dw and dbci-tools repositories..."
+                script {
+                    def originalUrl = env.GIT_URL
+                    
+                    if (!originalUrl) {
+                        error("GIT_URL environment variable is not set. Cannot derive repository URLs.")
+                    }
+                    
+                    // Derive demo-dw and dbci-tools repository URLs
+                    def demoDwRepoUrl = originalUrl.replaceAll(/\/([^\/]+)\.git$/, '/demo-dw.git')
+                    def dbciToolsRepoUrl = originalUrl.replaceAll(/\/([^\/]+)\.git$/, '/dbci-tools.git')
+                    
+                    echo "Demo DW repository: ${demoDwRepoUrl}"
+                    echo "DBCI Tools repository: ${dbciToolsRepoUrl}"
+                    
+                    // Clone demo-dw
+                    sh "rm -rf demo-dw && git clone --branch main --single-branch --depth 1 '${demoDwRepoUrl}' demo-dw"
+                    echo "✅ demo-dw cloned to: ${env.DEMO_DW_PATH}"
+                    
+                    // Clone dbci-tools
+                    sh "rm -rf dbci-tools && git clone --branch main --single-branch --depth 1 '${dbciToolsRepoUrl}' dbci-tools"
+                    echo "✅ dbci-tools cloned to: ${env.DBCI_TOOLS_PATH}"
+                }
+            }
+        }
+        
+        stage('Setup DBCI Tools') {
+            steps {
+                echo "Setting up dbci-tools environment..."
+                script {
+                    sh """
+                        cd ${env.DBCI_TOOLS_PATH}
+                        python3 -m venv .venv
+                        .venv/bin/pip install --upgrade pip
+                        .venv/bin/pip install -e .
+                    """
+                    echo "✅ dbci-tools environment setup complete"
+                }
+            }
+            post {
+                success {
+                    publishChecks name: 'DBCI-SETUP', title: 'DBCI Tools Setup', summary: 'DBCI tools installed successfully', conclusion: 'SUCCESS'
+                }
+                failure {
+                    publishChecks name: 'DBCI-SETUP', title: 'DBCI Tools Setup', summary: 'Failed to set up DBCI tools', conclusion: 'FAILURE'
+                }
+            }
+        }
+        
+        stage('Build Database Schema (HCL)') {
+            steps {
+                echo "Building HCL schema from demo-dw SQL files..."
+                script {
+                    sh """
+                        cd ${env.DBCI_TOOLS_PATH}
+                        .venv/bin/dbci BUILD ${env.DEMO_DW_PATH}
+                    """
+                    
+                    // Verify HCL file was created
+                    def hclFile = "${env.DEMO_DW_PATH}/target/schema.hcl"
+                    if (fileExists(hclFile)) {
+                        echo "✅ HCL schema built successfully: ${hclFile}"
+                        
+                        // Show basic stats
+                        sh """
+                            echo "Schema Statistics:"
+                            grep -c '^table' ${hclFile} || echo "0 tables found"
+                        """
+                    } else {
+                        error("❌ HCL schema file not found at ${hclFile}")
+                    }
+                }
+            }
+            post {
+                success {
+                    publishChecks name: 'SCHEMA-BUILD', title: 'Schema Build (HCL)', summary: 'Database schema HCL generated successfully', conclusion: 'SUCCESS'
+                    
+                    // Archive the HCL schema file
+                    archiveArtifacts(
+                        artifacts: 'demo-dw/target/schema.hcl',
+                        fingerprint: true,
+                        allowEmptyArchive: false
+                    )
+                }
+                failure {
+                    publishChecks name: 'SCHEMA-BUILD', title: 'Schema Build (HCL)', summary: 'Failed to build HCL schema', conclusion: 'FAILURE'
                 }
             }
         }
@@ -83,6 +179,34 @@ pipeline {
                 }
             }
         }
+        
+        stage('Validate Model') {
+            steps {
+                echo "Validating ETL source model against database schema..."
+                script {
+                    def hclFile = "${env.DEMO_DW_PATH}/target/schema.hcl"
+                    
+                    if (!fileExists(hclFile)) {
+                        error("❌ HCL schema file not found at ${hclFile}. Cannot validate.")
+                    }
+                    
+                    sh """
+                        cd ${env.ETL_FRAMEWORK_PATH}
+                        ./run.sh validate --project-dir ${env.PROJECT_ROOT} --hcl-file ${hclFile} -v
+                    """
+                }
+            }
+            post {
+                success {
+                    echo "✅ Model validation passed - ETL model matches database schema"
+                    publishChecks name: 'VALIDATION', title: 'Model Validation', summary: 'ETL source model validated successfully against database schema', conclusion: 'SUCCESS'
+                }
+                failure {
+                    echo "❌ Model validation failed - schema mismatches detected"
+                    publishChecks name: 'VALIDATION', title: 'Model Validation', summary: 'Schema mismatches found between ETL model and database', conclusion: 'FAILURE'
+                }
+            }
+        }
     }
     
     post {
@@ -105,14 +229,18 @@ pipeline {
             
             Pipeline Summary:
             ✅ ETL Framework: Cloned and ready
+            ✅ Database Schema: demo-dw and dbci-tools cloned
+            ✅ DBCI Setup: Tools environment configured
+            ✅ Schema Build: HCL schema generated from SQL files
             ✅ SETUP: Virtual environment created and dependencies installed
             ✅ TESTS: All pytest tests passed
+            ✅ VALIDATION: ETL source model matches database schema
             
-            The demo-etl project is working correctly with the etl-framework.
+            The demo-etl project is working correctly and validated against the database schema.
             """
             
             script {
-                publishChecks name: 'ETL-Pipeline', title: 'ETL Pipeline Complete', summary: 'All stages completed successfully', conclusion: 'SUCCESS'
+                publishChecks name: 'ETL-Pipeline', title: 'ETL Pipeline Complete', summary: 'All stages completed successfully including model validation', conclusion: 'SUCCESS'
             }
         }
         
@@ -126,12 +254,16 @@ pipeline {
             - Missing dependencies in pyproject.toml
             - Test failures in pytest suite
             - Git repository access issues (Clone stage)
+            - Schema validation failures (model doesn't match database)
+            - Atlas/DBCI tools not available or misconfigured
             """
         }
         
         cleanup {
-            // Optional: Clean up ETL framework directory if desired
+            // Optional: Clean up cloned repositories if desired
             // sh "rm -rf ${env.ETL_FRAMEWORK_PATH}"
+            // sh "rm -rf ${env.DEMO_DW_PATH}"
+            // sh "rm -rf ${env.DBCI_TOOLS_PATH}"
             echo "Pipeline cleanup completed"
         }
     }

@@ -94,6 +94,21 @@ from .cli import (
     create_partition_cli,
 )
 
+# Model validation
+from .model_validator import (
+    ModelValidator,
+    validate_model,
+    ValidationResult,
+    ValidationIssue,
+    ValidationSeverity,
+)
+
+from .hcl_parser import (
+    HclParser,
+    HclTable,
+    HclColumn,
+)
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -144,4 +159,14 @@ __all__ = [
     "run_partition",
     "run_partition_cli",
     "create_partition_cli",
+    
+    # Model validation
+    "ModelValidator",
+    "validate_model",
+    "ValidationResult",
+    "ValidationIssue",
+    "ValidationSeverity",
+    "HclParser",
+    "HclTable",
+    "HclColumn",
 ]

@@ -4,7 +4,7 @@ This folder contains configuration templates used by the DevOps Tools library fo
 
 ## 📁 Structure
 
-```
+```bash
 templates/
 ├── gitea/              # Gitea configuration templates
 │   ├── branch-protection.json
@@ -19,21 +19,25 @@ templates/
 ## 🦊 Gitea Templates
 
 ### branch-protection.json
+
 Template for setting up branch protection rules on repositories.
 
 **Used by:** `devops_tools.gitea.setup_branch_protection()`
 
 **Variables:**
+
 - None (static configuration)
 
 **Purpose:** Protects the main branch from direct pushes, requires pull requests.
 
 ### repo.json
+
 Template for creating new repositories via Gitea API.
 
 **Used by:** `devops_tools.gitea.create_repo()`
 
 **Variables:**
+
 - `$name` - Repository name
 - `$description` - Repository description
 - `$private` - Whether repository is private (true/false)
@@ -41,32 +45,38 @@ Template for creating new repositories via Gitea API.
 ## 🔧 Jenkins Templates
 
 ### basic-security.groovy
+
 Groovy script for configuring Jenkins basic security settings.
 
 **Used by:** `devops_tools.env.setup()`
 
 **Variables:**
+
 - `$JENKINS_ADMIN_USER` - Admin username
 - `$JENKINS_ADMIN_PASSWORD` - Admin password
 
 **Purpose:** Sets up basic authentication and security realm.
 
 ### jenkins-creds.xml
+
 XML template for creating Jenkins credentials.
 
 **Used by:** `devops_tools.jenkins.create_credentials()`
 
 **Variables:**
+
 - `$CRED_ID` - Credential ID
 - `$USERNAME` - Username for the credential
 - `$PASSWORD` - Password for the credential
 
 ### jenkins-org.xml
+
 XML template for creating Jenkins organization folders.
 
 **Used by:** `devops_tools.jenkins.create_org()`
 
 **Variables:**
+
 - `$ORG_NAME` - Organization name
 - `$GITEA_ADVERTISED_URL` - Gitea server URL
 - `$CRED_ID` - Credentials to use for accessing Gitea
@@ -74,11 +84,13 @@ XML template for creating Jenkins organization folders.
 **Purpose:** Creates an organization folder that scans Gitea for repositories with Jenkinsfiles.
 
 ### jenkins.yaml
+
 Jenkins Configuration as Code (JCasC) template.
 
 **Used by:** `devops_tools.env.setup()`
 
 **Variables:**
+
 - `$JENKINS_ADMIN_USER` - Admin username
 - `$JENKINS_ADMIN_PASSWORD` - Admin password
 
