@@ -41,6 +41,7 @@ dev = [
 ]
 
 [project.scripts]
+etl = "dagster_etl_framework.cli_main:main"
 etl-framework = "dagster_etl_framework.main:main"
 etl-setup = "dagster_etl_framework.setup:main"
 etl-teardown = "dagster_etl_framework.setup:teardown"

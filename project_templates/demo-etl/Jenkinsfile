@@ -142,7 +142,7 @@ pipeline {
                 script {
                     sh """
                         cd ${env.ETL_FRAMEWORK_PATH}
-                        ./run.sh setup --project-dir ${env.PROJECT_ROOT} --framework-path ${env.ETL_FRAMEWORK_PATH} --warehouse csv --no-ui
+                        ./run.sh SETUP ${env.PROJECT_ROOT}
                     """
                 }
             }
@@ -164,7 +164,7 @@ pipeline {
                 script {
                     sh """
                         cd ${env.ETL_FRAMEWORK_PATH}
-                        ./run.sh test --project-dir ${env.PROJECT_ROOT}
+                        ./run.sh TEST ${env.PROJECT_ROOT}
                     """
                 }
             }
@@ -192,7 +192,7 @@ pipeline {
                     
                     sh """
                         cd ${env.ETL_FRAMEWORK_PATH}
-                        ./run.sh validate --project-dir ${env.PROJECT_ROOT} --hcl-file ${hclFile} -v
+                        ./run.sh VALIDATE ${env.PROJECT_ROOT} ${hclFile}
                     """
                 }
             }
