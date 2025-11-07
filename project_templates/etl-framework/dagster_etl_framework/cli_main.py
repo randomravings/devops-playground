@@ -95,12 +95,19 @@ def test_project(project_root: pathlib.Path):
         print(f"  Run: etl SETUP {project_root}")
         sys.exit(1)
     
-    # Run pytest
+    # Use the commands module to run tests (loads .env file)
     python_exe = venv_path / "bin" / "python"
     result = subprocess.run(
-        [str(python_exe), "-m", "pytest", "-v"],
+        [
+            str(python_exe), "-m", "dagster_etl_framework.commands",
+            "test",
+            "--project-dir", str(project_root)
+        ],
         cwd=str(project_root),
-        check=False
+        check=False,
+        # Explicitly inherit stdout/stderr
+        stdout=sys.stdout,
+        stderr=sys.stderr
     )
     
     if result.returncode == 0:
