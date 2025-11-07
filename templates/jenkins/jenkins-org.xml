@@ -25,7 +25,7 @@
     <jenkins.branch.OrganizationChildTriggersProperty>
       <templates>
         <com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger plugin="cloudbees-folder@6.1062.v2877b_d6b_b_eeb_">
-          <spec>H/5 * * * *</spec>
+          <spec>H/15 * * * *</spec>
           <interval>900000</interval>
         </com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger>
       </templates>
@@ -35,10 +35,6 @@
       <globalSettings class="jenkins.mvn.DefaultGlobalSettingsProvider"/>
       <override>false</override>
     </org.jenkinsci.plugins.pipeline.maven.MavenConfigFolderOverrideProperty>
-    <jenkins.branch.NoTriggerOrganizationFolderProperty>
-      <branches>.*</branches>
-      <strategy>INDEXING</strategy>
-    </jenkins.branch.NoTriggerOrganizationFolderProperty>
   </properties>
   <folderViews class="jenkins.branch.OrganizationFolderViewHolder">
     <owner reference="../.."/>
@@ -55,7 +51,7 @@
   </orphanedItemStrategy>
   <triggers>
     <com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger plugin="cloudbees-folder@6.1062.v2877b_d6b_b_eeb_">
-      <spec>H/5 * * * *</spec>
+      <spec>H/15 * * * *</spec>
       <interval>900000</interval>
     </com.cloudbees.hudson.plugins.folder.computed.PeriodicFolderTrigger>
   </triggers>
@@ -76,6 +72,9 @@
           <strategyId>1</strategyId>
           <trust class="org.jenkinsci.plugin.gitea.ForkPullRequestDiscoveryTrait$$TrustContributors"/>
         </org.jenkinsci.plugin.gitea.ForkPullRequestDiscoveryTrait>
+        <org.jenkinsci.plugin.gitea.WebhookRegistrationTrait>
+          <mode>ITEM</mode>
+        </org.jenkinsci.plugin.gitea.WebhookRegistrationTrait>
       </traits>
     </org.jenkinsci.plugin.gitea.GiteaSCMNavigator>
   </navigators>

@@ -1,0 +1,592 @@
+# Dagster ETL Framework
+
+A modular ETL framework for Dagster with built-in SCD Type 2 support, declarative modeling, and flexible storage backends.
+
+## Features
+
+- **Declarative Source Modeling**: Define your ETL pipeline using simple Python dataclasses
+- **SCD Type 2 Dimensions**: Automatic handling of slowly changing dimensions with full history tracking
+- **Flexible Storage**: Switch between CSV and PostgreSQL backends with environment variables
+- **Partitioned Execution**: Built-in support for incremental loads via Dagster partitions
+- **Date Dimension**: Automatic date dimension generation
+- **Model Validation**: Validate ETL source models against database schemas (HCL files from dbci-tools)
+- **Type Safety**: Full typing support with dataclasses and enums
+- **Modular Design**: Reusable asset factories for raw, staging, dimension, and fact tables
+- **Project Management**: Built-in CLI for setup, teardown, running, testing, and validating ETL projects
+
+## Installation
+
+### From Local Source
+
+```bash
+pip install -e /path/to/dagster-etl-framework
+```
+
+### With PostgreSQL Support
+
+```bash
+pip install -e /path/to/dagster-etl-framework[postgres]
+```
+
+### Development Installation
+
+```bash
+pip install -e /path/to/dagster-etl-framework[dev]
+```
+
+## Project Structure
+
+```
+etl-framework/
+├── dagster_etl_framework/    # Main package
+│   ├── __init__.py
+│   ├── cli_main.py          # User-facing CLI
+│   ├── commands.py          # Command implementations
+│   ├── setup.py             # Setup/teardown managers
+│   ├── cli.py               # Partition runner utilities
+│   ├── framework.py         # Asset factories
+│   ├── io_managers.py       # Storage backends
+│   ├── resources.py         # Resource configs
+│   ├── source_model.py      # Data model classes
+│   └── source_model_loader.py
+├── run.sh                    # Bootstrap script
+├── pyproject.toml
+└── README.md
+```
+
+## Usage Recipes
+
+The framework uses uppercase commands with minimal flags. Call `run.sh` from the framework directory, specifying the operation and target ETL project path.
+
+### Recipe 1: Setup Environment
+
+**Setup CSV warehouse (recommended for local development):**
+
+```bash
+cd /path/to/etl-framework
+./run.sh SETUP ../demo-etl
+```
+
+**Setup PostgreSQL warehouse:**
+
+```bash
+cd /path/to/etl-framework
+./run.sh SETUP ../demo-etl --warehouse postgres
+```
+
+**What this does:**
+- Creates `.venv/` in both framework and project directories
+- Installs framework and project dependencies
+- Copies `.env.{warehouse}.template` → `.env` in project
+- Launches Dagster UI at http://localhost:3000
+- Displays environment variables for verification
+
+**Options:**
+- `--warehouse {csv|postgres}`: Warehouse type (default: csv)
+
+### Recipe 2: Run Pipeline for Specific Date
+
+**Run single date partition:**
+
+```bash
+cd /path/to/etl-framework
+./run.sh RUN ../demo-etl -d 2024-02-01
+```
+
+**Run with custom input/output paths:**
+
+```bash
+cd /path/to/etl-framework
+./run.sh RUN ../demo-etl -d 2024-02-01 -i tests/data -o .data/warehouse
+```
+
+**What this does:**
+- Activates project's virtual environment
+- Loads project's `.env` configuration
+- Auto-detects project name from `pyproject.toml`
+- Dynamically imports `{project}.assets.all_assets`
+- Executes Dagster pipeline for specified date partition
+- Materializes all assets in dependency order
+
+**Options:**
+- `-d, --date YYYY-MM-DD`: Date partition to process (required)
+- `-i, --input-dir PATH`: Override input directory
+- `-o, --output-dir PATH`: Override output directory
+
+### Recipe 3: Run Tests
+
+**Run all tests:**
+
+```bash
+cd /path/to/etl-framework
+./run.sh TEST ../demo-etl
+```
+
+**Run with verbose output:**
+
+```bash
+cd /path/to/etl-framework
+./run.sh TEST ../demo-etl -v
+```
+
+**Run specific test file:**
+
+```bash
+cd /path/to/etl-framework
+./run.sh TEST ../demo-etl tests/test_assets.py -v
+```
+
+**Run specific test function:**
+
+```bash
+cd /path/to/etl-framework
+./run.sh TEST ../demo-etl tests/test_assets.py::test_initial_load -v
+```
+
+**What this does:**
+- Activates project's virtual environment
+- Runs pytest with project's test configuration
+- Uses `config_test.yaml` for test-specific Dagster config
+- Executes tests against isolated test data
+- Reports coverage if configured
+
+**Options:**
+- `-v, --verbose`: Verbose pytest output
+- Additional arguments passed to pytest
+
+### Recipe 4: Validate Source Model
+
+**Validate ETL source model against database schema (auto-detect HCL file):**
+
+```bash
+cd /path/to/etl-framework
+./run.sh VALIDATE ../demo-etl
+```
+
+**Validate with explicit HCL file path:**
+
+```bash
+cd /path/to/etl-framework
+./run.sh VALIDATE ../demo-etl ../demo-dw/target/schema.hcl
+```
+
+**With verbose output:**
+
+```bash
+cd /path/to/etl-framework
+./run.sh VALIDATE ../demo-etl ../demo-dw/target/schema.hcl -v
+```
+
+**What this does:**
+- Parses the HCL schema file generated by dbci-tools BUILD
+- Loads the ETL source model (dimensions and facts)
+- Compares each dimension/fact definition against HCL tables
+- Validates that all expected columns exist in the schema
+- Reports missing columns, extra columns, and schema mismatches
+- Handles special cases (date dimension, system columns)
+- Auto-detects HCL file location if not specified
+
+**Options:**
+- `-v, --verbose`: Show detailed validation results
+
+**Prerequisites:**
+- Database schema must be built first using `dbci BUILD` in the demo-dw project
+- HCL file typically located at `demo-dw/target/schema.hcl`
+
+**Example workflow with database project:**
+
+```bash
+# Build the database schema
+cd ../demo-dw
+dbci BUILD .
+
+# Validate ETL model against schema (auto-detect HCL)
+cd ../etl-framework
+./run.sh VALIDATE ../demo-etl
+
+# Or specify HCL file explicitly
+./run.sh VALIDATE ../demo-etl ../demo-dw/target/schema.hcl
+```
+
+### Recipe 5: Teardown Environment
+
+**Interactive teardown (prompts for confirmation):**
+
+```bash
+cd /path/to/etl-framework
+./run.sh TEARDOWN ../demo-etl
+```
+
+**Force teardown (no confirmation):**
+
+```bash
+cd /path/to/etl-framework
+./run.sh TEARDOWN ../demo-etl --force
+```
+
+**Stop Dagster UI only (keep environment):**
+
+```bash
+cd /path/to/etl-framework
+./run.sh TEARDOWN ../demo-etl --ui-only
+```
+
+**What this does:**
+- Stops Dagster UI process
+- Optionally removes virtual environment
+- Optionally removes `.env` file
+- Optionally removes generated data/warehouse files
+- Displays what was cleaned up
+
+**Options:**
+- `--force`: Skip confirmation prompts
+- `--ui-only`: Only stop UI, keep environment and data
+
+## Complete Workflow Example
+
+Here's a complete workflow for working with an ETL project instance:
+
+```bash
+# Navigate to framework
+cd /path/to/project_templates/etl-framework
+
+# 1. Setup environment with CSV warehouse
+./run.sh SETUP ../demo-etl
+
+# 2. Run pipeline for initial date
+./run.sh RUN ../demo-etl -d 2024-02-01
+
+# 3. Run pipeline for delta date
+./run.sh RUN ../demo-etl -d 2024-02-02
+
+# 4. Run tests to verify
+./run.sh TEST ../demo-etl -v
+
+# 5. View results in Dagster UI
+# Open browser to http://localhost:3000
+
+# 6. Clean up when done
+./run.sh TEARDOWN ../demo-etl --force
+```
+
+## Multi-Project Workflow
+
+The framework can manage multiple ETL project instances:
+
+```bash
+cd /path/to/etl-framework
+
+# Setup multiple projects
+./run.sh SETUP ../demo-etl
+./run.sh SETUP ../another-etl --warehouse postgres
+
+# Run pipelines for different projects
+./run.sh RUN ../demo-etl -d 2024-02-01
+./run.sh RUN ../another-etl -d 2024-02-01
+
+# Test each project
+./run.sh TEST ../demo-etl
+./run.sh TEST ../another-etl
+
+# Teardown specific project
+./run.sh TEARDOWN ../demo-etl --force
+```
+
+## Quick Start
+
+### 1. Define Your Source Model
+
+```python
+from dagster_etl_framework import (
+    SourceModel,
+    Source,
+    SourceField,
+    Dimension,
+    DimensionSource,
+    DimensionField,
+    Fact,
+    FactSource,
+    FactField,
+    DimensionLookup,
+    SourceFieldType,
+)
+
+# Define physical sources
+source_model = SourceModel(
+    sources={
+        "customers": Source(
+            name="customers",
+            ext_name="customers_delta.csv",
+            fields={
+                "customer_id": SourceField(name="customer_id", dtype="int64"),
+                "customer_name": SourceField(name="customer_name", dtype="str"),
+                "email": SourceField(name="email", dtype="str"),
+                "extract_date": SourceField(name="extract_date", dtype="datetime64[ns]"),
+            },
+            primary_key=["customer_id"],
+        ),
+        "orders": Source(
+            name="orders",
+            ext_name="orders_delta.csv",
+            fields={
+                "order_id": SourceField(name="order_id", dtype="int64"),
+                "customer_id": SourceField(name="customer_id", dtype="int64"),
+                "order_date": SourceField(name="order_date", dtype="datetime64[ns]"),
+                "total_amount": SourceField(name="total_amount", dtype="float64"),
+                "extract_date": SourceField(name="extract_date", dtype="datetime64[ns]"),
+            },
+            primary_key=["order_id"],
+        ),
+    },
+    
+    # Define analytical dimensions
+    dimensions={
+        "dim_customers": Dimension(
+            name="dim_customers",
+            sources={
+                "customers": DimensionSource(
+                    name="customers",
+                    fields=[
+                        DimensionField(name="customer_id", type=SourceFieldType.KEY),
+                        DimensionField(name="customer_name", type=SourceFieldType.T2),
+                        DimensionField(name="email", type=SourceFieldType.T1),
+                    ],
+                ),
+            },
+        ),
+    },
+    
+    # Define analytical facts
+    facts={
+        "fact_orders": Fact(
+            name="fact_orders",
+            sources={
+                "orders": FactSource(
+                    name="orders",
+                    fields=[
+                        FactField(name="order_id", type=SourceFieldType.KEY),
+                        FactField(name="order_date", type=SourceFieldType.ATT),
+                        FactField(name="total_amount", type=SourceFieldType.ATT),
+                    ],
+                ),
+            },
+            dimension_lookups=[
+                DimensionLookup(
+                    dimension="dim_customers",
+                    business_keys=["customer_id"],
+                    surrogate_key="customer_key",
+                    lookup_strategy="current",
+                ),
+            ],
+        ),
+    },
+)
+```
+
+### 2. Create Assets Using Factory Functions
+
+```python
+from dagster_etl_framework import (
+    create_raw_asset,
+    create_dimension_staging_asset,
+    create_scd_type2_dimension_asset,
+    create_fact_staging_asset,
+    create_fact_table_asset,
+    create_date_dimension_asset,
+)
+
+# Raw assets (load from source files)
+raw_customers = create_raw_asset(source_model.sources["customers"])
+raw_orders = create_raw_asset(source_model.sources["orders"])
+
+# Dimension assets (SCD Type 2)
+dim_customers_staging = create_dimension_staging_asset(source_model.dimensions["dim_customers"])
+dim_customers = create_scd_type2_dimension_asset(source_model.dimensions["dim_customers"])
+
+# Fact assets
+fact_orders_staging = create_fact_staging_asset(source_model.facts["fact_orders"])
+fact_orders = create_fact_table_asset(source_model.facts["fact_orders"])
+
+# Date dimension
+dim_date = create_date_dimension_asset()
+```
+
+### 3. Configure Resources
+
+```python
+import os
+from dagster import Definitions, EnvVar
+from dagster_etl_framework import CsvIOManager, SourceCsvIOManager, PostgresIOManager
+
+# CSV configuration
+warehouse_type = os.getenv("WAREHOUSE_TYPE", "csv")
+
+if warehouse_type == "csv":
+    warehouse_io_manager = CsvIOManager(
+        base_path=os.getenv("WAREHOUSE_PATH", ".data/warehouse")
+    )
+elif warehouse_type == "postgres":
+    warehouse_io_manager = PostgresIOManager(
+        host=os.getenv("POSTGRES_HOST"),
+        db=os.getenv("POSTGRES_DB"),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+    )
+
+defs = Definitions(
+    assets=[
+        raw_customers,
+        raw_orders,
+        dim_customers_staging,
+        dim_customers,
+        fact_orders_staging,
+        fact_orders,
+        dim_date,
+    ],
+    resources={
+        "warehouse_io_manager": warehouse_io_manager,
+        "source_io_manager": SourceCsvIOManager(base_path="data/input"),
+    },
+)
+```
+
+## Architecture
+
+### Asset Types
+
+The framework provides factory functions for five types of assets:
+
+1. **Raw Assets** (`create_raw_asset`): Load source files with schema validation
+2. **Dimension Staging Assets** (`create_dimension_staging_asset`): Prepare dimension data
+3. **SCD Type 2 Dimension Assets** (`create_scd_type2_dimension_asset`): Create historical dimensions
+4. **Fact Staging Assets** (`create_fact_staging_asset`): Prepare fact data with denormalization
+5. **Fact Table Assets** (`create_fact_table_asset`): Create fact tables with dimension lookups
+6. **Date Dimension Assets** (`create_date_dimension_asset`): Generate date dimension records
+
+### SCD Type 2 Processing
+
+Dimensions automatically track changes using SCD Type 2:
+
+- **Type 1 fields**: Updated in place (latest value only)
+- **Type 2 fields**: Version on change (full history)
+- **Surrogate keys**: Auto-generated monotonic IDs
+- **Validity tracking**: `valid_from` and `valid_to` timestamps
+- **Current flag**: `is_current` for easy querying
+
+### Field Types
+
+Use `SourceFieldType` enum to control dimension behavior:
+
+- `KEY`: Business key (identify records)
+- `T1`: Type 1 attribute (update in place)
+- `T2`: Type 2 attribute (version on change)
+- `EDT`: Extract date/timestamp
+- `ATT`: Attribute (for facts)
+
+## Storage Backends
+
+### CSV Storage
+
+Set environment variables:
+
+```bash
+export WAREHOUSE_TYPE=csv
+export WAREHOUSE_PATH=.data/warehouse
+```
+
+### PostgreSQL Storage
+
+Set environment variables:
+
+```bash
+export WAREHOUSE_TYPE=postgres
+export POSTGRES_HOST=localhost
+export POSTGRES_DB=warehouse
+export POSTGRES_USER=postgres
+export POSTGRES_PASSWORD=secret
+```
+
+## Partitioning
+
+The framework supports Dagster partitions for incremental loads:
+
+```python
+from dagster import DailyPartitionsDefinition
+
+daily_partitions = DailyPartitionsDefinition(start_date="2024-02-01")
+
+# Apply to raw assets
+raw_customers = create_raw_asset(
+    source_model.sources["customers"],
+    partitions_def=daily_partitions,
+)
+```
+
+## Advanced Usage
+
+### Custom Date Dimension
+
+```python
+dim_date = create_date_dimension_asset(
+    start_year=2020,
+    end_year=2030,
+)
+```
+
+### Point-in-Time Dimension Lookups
+
+```python
+fact_orders = Fact(
+    name="fact_orders",
+    sources={...},
+    dimension_lookups=[
+        DimensionLookup(
+            dimension="dim_customers",
+            business_keys=["customer_id"],
+            surrogate_key="customer_key",
+            lookup_strategy="point_in_time",  # Use order_date for lookup
+        ),
+    ],
+)
+```
+
+### Direct (Non-SCD) Lookups
+
+```python
+DimensionLookup(
+    dimension="dim_date",
+    business_keys=["order_date"],
+    surrogate_key="order_date_key",
+    lookup_strategy="direct",  # No versioning
+)
+```
+
+## Development
+
+### Running Tests
+
+```bash
+pytest
+```
+
+### Code Formatting
+
+```bash
+black src/
+ruff check src/
+```
+
+## Requirements
+
+- Python >= 3.12
+- dagster >= 1.8.0
+- pandas >= 2.0.0
+- psycopg >= 3.0.0 (for PostgreSQL support)
+
+## License
+
+MIT License
+
+## Contributing
+
+Contributions welcome! Please open an issue or pull request.

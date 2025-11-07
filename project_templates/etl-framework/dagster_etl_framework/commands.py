@@ -76,7 +76,8 @@ def run_command(args: List[str]) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example:
-  ./run.sh run --project-dir ../demo-etl -d 2024-02-01
+  etl RUN /path/to/demo-etl -d 2024-02-01
+  ./run.sh RUN . -d 2024-02-01
         """
     )
     
@@ -221,7 +222,8 @@ def test_command(args: List[str]) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example:
-  ./run.sh test --project-dir ../demo-etl -v
+  etl TEST /path/to/demo-etl
+  ./run.sh TEST .
         """
     )
     
@@ -306,9 +308,14 @@ def validate_command(args: List[str]) -> int:
         description="Validate ETL source model against database schema",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Example:
-  ./run.sh validate --project-dir ../demo-etl --hcl-file ../demo-dw/target/schema.hcl
-  ./run.sh validate -p ../demo-etl -s demo_etl/source_model.yaml --hcl ../demo-dw/target/schema.hcl
+Examples:
+  # Auto-detect HCL file (looks for ../demo-dw/target/schema.hcl)
+  etl VALIDATE /path/to/demo-etl
+  ./run.sh VALIDATE .
+  
+  # Explicit HCL file path
+  etl VALIDATE /path/to/demo-etl /path/to/schema.hcl
+  ./run.sh VALIDATE . ../demo-dw/target/schema.hcl
         """
     )
     
@@ -454,3 +461,24 @@ Example:
             traceback.print_exc()
         return 1
 
+
+if __name__ == "__main__":
+    """Entry point when running as module: python -m dagster_etl_framework.commands"""
+    if len(sys.argv) < 2:
+        print("Usage: python -m dagster_etl_framework.commands <command> [args...]")
+        print("Commands: run, test, validate")
+        sys.exit(1)
+    
+    command = sys.argv[1]
+    args = sys.argv[2:]
+    
+    if command == "run":
+        sys.exit(run_command(args))
+    elif command == "test":
+        sys.exit(test_command(args))
+    elif command == "validate":
+        sys.exit(validate_command(args))
+    else:
+        print(f"Unknown command: {command}")
+        print("Available commands: run, test, validate")
+        sys.exit(1)

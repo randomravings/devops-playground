@@ -57,30 +57,31 @@ def run_pipeline(project_root: pathlib.Path, date: str):
         print(f"  Run: etl SETUP {project_root}")
         sys.exit(1)
     
-    # Find the run script
-    run_script = None
-    for candidate in ["run_date.py", "run.py"]:
-        script_path = project_root / candidate
-        if script_path.exists():
-            run_script = script_path
-            break
-    
-    if not run_script:
-        print("✗ Error: No run script found (run_date.py or run.py)")
-        sys.exit(1)
-    
     print(f"[run] Date: {date}")
-    print(f"[run] Script: {run_script}")
+    print("")
     
-    # Run the pipeline using project venv
+    # Use the commands module to run the pipeline
     python_exe = venv_path / "bin" / "python"
-    subprocess.run(
-        [str(python_exe), str(run_script), "-d", date],
+    result = subprocess.run(
+        [
+            str(python_exe), "-m", "dagster_etl_framework.commands",
+            "run",
+            "--project-dir", str(project_root),
+            "-d", date
+        ],
         cwd=str(project_root),
-        check=True
+        check=False,
+        # Explicitly inherit stdout/stderr to show Dagster output
+        stdout=sys.stdout,
+        stderr=sys.stderr
     )
     
-    print(f"[run] ✅ Pipeline completed")
+    print("")
+    if result.returncode == 0:
+        print(f"[run] ✅ Pipeline completed")
+    else:
+        print(f"[run] ⚠️  Pipeline failed")
+        sys.exit(result.returncode)
 
 
 def test_project(project_root: pathlib.Path):
@@ -131,6 +132,7 @@ def validate_model(project_root: pathlib.Path, hcl_file: pathlib.Path = None):
         sys.exit(1)
     
     print(f"[validate] HCL schema: {hcl_file}")
+    print("")
     
     # Check if venv exists
     venv_path = project_root / ".venv"
@@ -145,13 +147,16 @@ def validate_model(project_root: pathlib.Path, hcl_file: pathlib.Path = None):
         [
             str(python_exe), "-m", "dagster_etl_framework.commands",
             "validate",
-            str(project_root),
-            str(hcl_file)
+            "--project-dir", str(project_root),
+            "--hcl-file", str(hcl_file)
         ],
         cwd=str(project_root),
-        check=False
+        check=False,
+        stdout=sys.stdout,
+        stderr=sys.stderr
     )
     
+    print("")
     if result.returncode == 0:
         print(f"[validate] ✅ Model validation passed")
     else:
