@@ -14,9 +14,9 @@ def get_dbci_dir():
     """Get the DBCI tools directory (where this script is located)"""
     return pathlib.Path(__file__).parent.parent
 
-def get_config_file():
-    """Get the sqlfluff config file path"""
-    return get_dbci_dir() / ".sqlfluff"
+def get_config_file(project_root: pathlib.Path):
+    """Get the sqlfluff config file path from project root"""
+    return project_root / ".sqlfluff"
 
 def build_schema(project_root: pathlib.Path) -> pathlib.Path:
     """
@@ -67,7 +67,7 @@ def lint_schema(project_root: pathlib.Path):
     print("Linting schema...")
     
     source_dir = project_root / "db" / "schema"
-    config_file = get_config_file()
+    config_file = get_config_file(project_root)
     
     if not source_dir.exists():
         print(f"Error: Source directory does not exist: {source_dir}")
@@ -95,6 +95,64 @@ def guard_schema(project_root: pathlib.Path):
     
     # Guard checks target/atlas.migration.schema-changes.json in project root
     subprocess.run(["dbci-guard"], cwd=str(project_root), check=True)
+
+def install_dbci_tools():
+    """
+    Install and setup the DBCI tools environment.
+    Creates .venv and installs dependencies for the dbci-tools framework.
+    """
+    print("Installing DBCI tools environment...")
+    
+    # Get the dbci-tools directory (where this package is located)
+    dbci_dir = get_dbci_dir()
+    venv_dir = dbci_dir / ".venv"
+    
+    print(f"DBCI tools directory: {dbci_dir}")
+    
+    # Create virtual environment if it doesn't exist
+    if not venv_dir.exists():
+        print(f"Creating virtual environment at {venv_dir}...")
+        subprocess.run([
+            sys.executable, "-m", "venv", str(venv_dir)
+        ], check=True)
+        print("✅ Virtual environment created")
+    else:
+        print("✅ Virtual environment already exists")
+    
+    # Determine pip executable path
+    if os.name == 'nt':  # Windows
+        pip_exe = venv_dir / "Scripts" / "pip"
+    else:  # Unix/Linux/macOS
+        pip_exe = venv_dir / "bin" / "pip"
+    
+    # Upgrade pip
+    print("Upgrading pip...")
+    subprocess.run([str(pip_exe), "install", "--upgrade", "pip"], check=True)
+    
+    # Install the package in development mode (this installs dependencies from pyproject.toml)
+    print("Installing dbci-tools in development mode...")
+    subprocess.run([str(pip_exe), "install", "-e", str(dbci_dir)], check=True)
+    print("✅ dbci-tools installed in development mode")
+    
+    # Check for external dependencies
+    print("\nChecking external dependencies...")
+    
+    # Check for Atlas CLI
+    atlas_check = subprocess.run(["which", "atlas"], capture_output=True)
+    if atlas_check.returncode != 0:
+        print("⚠️  Warning: Atlas CLI not found in PATH")
+        print("   Install from: https://atlasgo.io/getting-started")
+    else:
+        atlas_version = subprocess.run(["atlas", "version"], capture_output=True, text=True)
+        print(f"✅ Atlas CLI found: {atlas_version.stdout.strip()}")
+    
+    print("")
+    print("DBCI tools installation:")
+    print(f"  Tools directory: {dbci_dir}")
+    print(f"  Virtual env:     {venv_dir}")
+    print(f"  Dependencies:    pyproject.toml")
+    print("")
+    print("[install] ✅ Installation complete")
 
 def diff_schema(project_root: pathlib.Path):
     """Compare current schema with main branch"""
@@ -176,8 +234,8 @@ def diff_schema(project_root: pathlib.Path):
 
 def run_all(project_root: pathlib.Path):
     """Run all DBCI operations in sequence"""
+    lint_schema(project_root)  # LINT first - operates on source files only
     build_schema(project_root)
-    lint_schema(project_root)
     diff_schema(project_root)
     guard_schema(project_root)  # GUARD must run after DIFF to check migration changes
 
@@ -188,13 +246,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Operations:
-  BUILD  - Generate HCL schema from source SQL files using Atlas
-  LINT   - Run SQLFluff linting on source SQL files
-  DIFF   - Compare current schema with main branch using Atlas, save main.hcl
-  GUARD  - Run schema validation checks
-  ALL    - Execute all operations in sequence (BUILD → LINT → GUARD → DIFF)
+  INSTALL - Install and setup DBCI tools environment (.venv and dependencies)
+  BUILD   - Generate HCL schema from source SQL files using Atlas
+  LINT    - Run SQLFluff linting on source SQL files
+  DIFF    - Compare current schema with main branch using Atlas, save main.hcl
+  GUARD   - Run schema validation checks
+  ALL     - Execute all operations in sequence (LINT → BUILD → DIFF → GUARD)
 
 Examples:
+  dbci INSTALL                    # Install DBCI tools environment
   dbci BUILD /path/to/project
   dbci LINT /path/to/project  
   dbci ALL /path/to/project
@@ -203,17 +263,35 @@ Examples:
     
     parser.add_argument(
         "operation",
-        choices=["BUILD", "LINT", "DIFF", "GUARD", "ALL"],
+        choices=["INSTALL", "BUILD", "LINT", "DIFF", "GUARD", "ALL"],
         help="Operation to perform"
     )
     
     parser.add_argument(
         "project_root",
         type=pathlib.Path,
-        help="Path to the project root directory"
+        nargs="?",
+        help="Path to the project root directory (not used for INSTALL)"
     )
     
     args = parser.parse_args()
+    
+    # Handle INSTALL separately (doesn't need project_root)
+    if args.operation == "INSTALL":
+        try:
+            install_dbci_tools()
+        except subprocess.CalledProcessError as e:
+            print(f"Error: Installation failed with exit code {e.returncode}", file=sys.stderr)
+            sys.exit(e.returncode)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        return
+    
+    # For all other operations, validate project_root
+    if args.project_root is None:
+        print(f"Error: {args.operation} operation requires a project path", file=sys.stderr)
+        sys.exit(1)
     
     # Validate project root exists
     if not args.project_root.exists():

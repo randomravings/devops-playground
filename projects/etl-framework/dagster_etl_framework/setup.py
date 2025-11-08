@@ -113,13 +113,26 @@ class SetupManager:
             if framework_path:
                 fw_path = Path(framework_path).resolve()
             else:
-                # Auto-detect: look for etl-framework as sibling directory
-                fw_path = self.project_dir.parent / "etl-framework"
+                print(f"  ✗ Error: Framework path not specified")
+                print("     Please specify framework path using --framework-path option")
+                print("     Example: --framework-path /path/to/etl-framework")
+                return False
             
             if not fw_path.exists():
                 print(f"  ✗ Error: Framework not found at {fw_path}")
                 print("     Please specify correct path using --framework-path option")
                 return False
+            
+            # Check if framework is properly installed first
+            framework_venv = fw_path / ".venv"
+            if not framework_venv.exists():
+                print(f"  ✗ Error: ETL framework not installed")
+                print(f"     Framework directory: {fw_path}")
+                print(f"     Missing: {framework_venv}")
+                print(f"     Run: cd {fw_path} && ./run.sh INSTALL")
+                return False
+            
+            print(f"  ✓ Framework installed at: {fw_path}")
             
             # Install framework
             print(f"  Installing dagster-etl-framework from {fw_path}...")
@@ -510,7 +523,8 @@ Example:
     )
     parser.add_argument(
         "--framework-path",
-        help="Path to framework (auto-detected)"
+        required=True,
+        help="Path to etl-framework directory (required)"
     )
     parser.add_argument(
         "--project-dir",

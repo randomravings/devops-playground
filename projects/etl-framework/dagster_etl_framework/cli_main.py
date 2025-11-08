@@ -10,11 +10,80 @@ import sys
 import os
 
 
+def install_framework():
+    """
+    Install and setup the ETL framework environment.
+    Creates .venv and installs dependencies for the etl-framework.
+    """
+    print("Installing ETL framework environment...")
+    
+    # Get the etl-framework directory (where this package is located) 
+    framework_path = pathlib.Path(__file__).parent.parent
+    venv_dir = framework_path / ".venv"
+    requirements_file = framework_path / "pyproject.toml"
+    
+    print(f"ETL framework directory: {framework_path}")
+    
+    # Create virtual environment if it doesn't exist
+    if not venv_dir.exists():
+        print(f"Creating virtual environment at {venv_dir}...")
+        subprocess.run([
+            sys.executable, "-m", "venv", str(venv_dir)
+        ], check=True)
+        print("✅ Virtual environment created")
+    else:
+        print("✅ Virtual environment already exists")
+    
+    # Determine pip executable path
+    if os.name == 'nt':  # Windows
+        pip_exe = venv_dir / "Scripts" / "pip"
+    else:  # Unix/Linux/macOS
+        pip_exe = venv_dir / "bin" / "pip"
+    
+    # Upgrade pip
+    print("Upgrading pip...")
+    subprocess.run([str(pip_exe), "install", "--upgrade", "pip"], check=True)
+    
+    # Install the framework in development mode
+    print("Installing etl-framework in development mode...")
+    subprocess.run([str(pip_exe), "install", "-e", str(framework_path)], check=True)
+    print("✅ etl-framework installed in development mode")
+    
+    # Check for external dependencies
+    print("\nChecking external dependencies...")
+    
+    # Check for Python version
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if sys.version_info >= (3, 12):
+        print(f"✅ Python {python_version} found")
+    else:
+        print(f"⚠️  Warning: Python {python_version} found, 3.12+ recommended")
+    
+    print("")
+    print("ETL framework installation:")
+    print(f"  Framework directory: {framework_path}")
+    print(f"  Virtual env:         {venv_dir}")
+    print(f"  Project config:      {requirements_file}")
+    print("")
+    print("[install] ✅ Installation complete")
+
+
 def setup_project(project_root: pathlib.Path, warehouse: str = "csv"):
     """Setup ETL project environment"""
     print(f"Setting up ETL project at {project_root}...")
     
-    framework_path = str(pathlib.Path(__file__).parent.parent)
+    framework_path = pathlib.Path(__file__).parent.parent
+    framework_venv = framework_path / ".venv"
+    
+    # Check if framework has been installed first
+    if not framework_venv.exists():
+        print(f"✗ Error: ETL framework not installed")
+        print(f"  Framework directory: {framework_path}")
+        print(f"  Missing: {framework_venv}")
+        print(f"  Run: etl INSTALL")
+        sys.exit(1)
+    
+    print(f"[setup] ✅ Framework installed at: {framework_path}")
     
     # Check if project has source_model.yaml
     source_model = project_root / "source_model.yaml"
@@ -33,17 +102,53 @@ def setup_project(project_root: pathlib.Path, warehouse: str = "csv"):
     print(f"[setup] Found source model: {source_model}")
     print(f"[setup] Warehouse type: {warehouse}")
     
-    # Use the standalone setup script
+    # Use the standalone setup script - explicitly don't start UI
     from .setup_standalone import setup_environment
     
     setup_environment(
         project_dir=str(project_root),
-        framework_path=framework_path,
+        framework_path=str(framework_path),
         warehouse_type=warehouse,
         start_ui=False
     )
     
     print(f"[setup] ✅ Project setup complete")
+
+
+def launch_ui(project_root: pathlib.Path, port: int = 3001):
+    """Launch Dagster UI for project"""
+    print(f"Launching Dagster UI for {project_root}...")
+    
+    # Check if venv exists
+    venv_path = project_root / ".venv"
+    if not venv_path.exists():
+        print(f"✗ Error: Virtual environment not found at {venv_path}")
+        print(f"  Run: etl SETUP {project_root}")
+        sys.exit(1)
+    
+    print(f"[ui] Port: {port}")
+    print("")
+    
+    # Use the setup module to launch UI
+    from .setup import SetupManager
+    setup_manager = SetupManager(str(project_root))
+    
+    try:
+        actual_port = setup_manager.launch_dagster_ui(port)
+        print(f"[ui] ✅ Dagster UI running at http://localhost:{actual_port}")
+        print("[ui] Press Ctrl+C to stop")
+        
+        # Keep running until interrupted
+        import time
+        while True:
+            time.sleep(1)
+            
+    except KeyboardInterrupt:
+        print(f"\n[ui] Stopping Dagster UI...")
+        print("[ui] ✅ UI stopped")
+    except Exception as e:
+        print(f"[ui] ⚠️  Error launching UI: {e}")
+        sys.exit(1)
 
 
 def run_pipeline(project_root: pathlib.Path, date: str):
@@ -117,25 +222,28 @@ def test_project(project_root: pathlib.Path):
         sys.exit(result.returncode)
 
 
-def validate_model(project_root: pathlib.Path, hcl_file: pathlib.Path = None):
+def validate_model(project_root: pathlib.Path, hcl_file: pathlib.Path):
     """Validate source model against database schema (HCL)"""
     print(f"Validating model for {project_root}...")
     
-    # Auto-detect HCL file if not provided
+    # Validate HCL file is provided and exists
     if not hcl_file:
-        # Look for demo-dw/target/schema.hcl
-        parent = project_root.parent
-        demo_dw_hcl = parent / "demo-dw" / "target" / "schema.hcl"
-        if demo_dw_hcl.exists():
-            hcl_file = demo_dw_hcl
-        else:
-            print("✗ Error: HCL schema file not found")
-            print(f"  Tried: {demo_dw_hcl}")
-            print(f"  Usage: etl VALIDATE {project_root} /path/to/schema.hcl")
-            sys.exit(1)
+        print("✗ Error: HCL schema file path is required")
+        print("")
+        print("Usage:")
+        print(f"  etl VALIDATE {project_root} /path/to/schema.hcl")
+        print(f"  ./run.sh VALIDATE . /path/to/schema.hcl")
+        print("")
+        print("Example:")
+        print(f"  etl VALIDATE {project_root} ../demo-dw/target/schema.hcl")
+        sys.exit(1)
     
     if not hcl_file.exists():
         print(f"✗ Error: HCL file not found: {hcl_file}")
+        print("")
+        print("Please ensure the database schema has been built:")
+        print("  cd /path/to/database-project")
+        print("  dbci BUILD .")
         sys.exit(1)
     
     print(f"[validate] HCL schema: {hcl_file}")
@@ -178,12 +286,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Operations:
+  INSTALL  - Install and setup ETL framework environment (.venv and dependencies)
   SETUP    - Setup project environment (creates .venv, installs deps)
   RUN      - Run ETL pipeline for specific date
   TEST     - Run project tests
   VALIDATE - Validate source model against database schema (HCL)
+  UI       - Launch Dagster UI for project
 
 Examples:
+  # Install ETL framework environment
+  etl INSTALL
+  
   # Setup with default CSV warehouse
   etl SETUP /path/to/demo-etl
   
@@ -196,24 +309,32 @@ Examples:
   # Run tests
   etl TEST /path/to/demo-etl
   
-  # Validate (auto-detects ../demo-dw/target/schema.hcl)
-  etl VALIDATE /path/to/demo-etl
-  
-  # Validate with explicit HCL path
+  # Validate (requires explicit HCL path)
   etl VALIDATE /path/to/demo-etl /path/to/schema.hcl
+  
+  # Launch Dagster UI
+  etl UI /path/to/demo-etl
         """
     )
     
     parser.add_argument(
         "operation",
-        choices=["SETUP", "RUN", "TEST", "VALIDATE"],
+        choices=["INSTALL", "SETUP", "RUN", "TEST", "VALIDATE", "UI"],
         help="Operation to perform"
     )
     
     parser.add_argument(
         "project_root",
         type=pathlib.Path,
-        help="Path to the ETL project root directory"
+        nargs="?",
+        help="Path to the ETL project root directory (not used for INSTALL)"
+    )
+    
+    parser.add_argument(
+        "hcl_file",
+        type=pathlib.Path,
+        nargs="?",
+        help="Path to HCL schema file (required for VALIDATE)"
     )
     
     # Operation-specific arguments
@@ -230,13 +351,30 @@ Examples:
     )
     
     parser.add_argument(
-        "hcl_file",
-        nargs="?",
-        type=pathlib.Path,
-        help="Path to HCL schema file for VALIDATE (optional, auto-detects)"
+        "-p", "--port",
+        type=int,
+        default=3001,
+        help="Port for UI operation (default: 3001)"
     )
     
     args = parser.parse_args()
+    
+    # Handle INSTALL separately (doesn't need project_root)
+    if args.operation == "INSTALL":
+        try:
+            install_framework()
+        except subprocess.CalledProcessError as e:
+            print(f"✗ Error: Installation failed with exit code {e.returncode}", file=sys.stderr)
+            sys.exit(e.returncode)
+        except Exception as e:
+            print(f"✗ Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        return
+    
+    # For all other operations, validate project_root
+    if args.project_root is None:
+        print(f"✗ Error: {args.operation} operation requires a project path", file=sys.stderr)
+        sys.exit(1)
     
     # Validate project root exists
     if not args.project_root.exists():
@@ -250,6 +388,9 @@ Examples:
         if args.operation == "SETUP":
             setup_project(project_root, args.warehouse)
             
+        elif args.operation == "UI":
+            launch_ui(project_root, args.port)
+            
         elif args.operation == "RUN":
             if not args.date:
                 print("✗ Error: --date/-d required for RUN operation", file=sys.stderr)
@@ -261,6 +402,11 @@ Examples:
             test_project(project_root)
             
         elif args.operation == "VALIDATE":
+            if not args.hcl_file:
+                print("✗ Error: HCL schema file path required for VALIDATE operation", file=sys.stderr)
+                print("  Usage: etl VALIDATE /path/to/project /path/to/schema.hcl", file=sys.stderr)
+                print("  Example: etl VALIDATE . ../demo-dw/target/schema.hcl", file=sys.stderr)
+                sys.exit(1)
             validate_model(project_root, args.hcl_file)
             
     except subprocess.CalledProcessError as e:

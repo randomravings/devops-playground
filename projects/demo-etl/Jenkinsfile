@@ -44,6 +44,28 @@ pipeline {
             }
         }
         
+        stage('Install ETL Framework') {
+            steps {
+                echo "Installing ETL Framework dependencies..."
+                script {
+                    sh """
+                        cd ${env.ETL_FRAMEWORK_PATH}
+                        ./run.sh INSTALL
+                    """
+                }
+            }
+            post {
+                success {
+                    echo "✅ ETL Framework installed successfully"
+                    publishChecks name: 'FRAMEWORK-INSTALL', title: 'ETL Framework Install', summary: 'Framework dependencies installed', conclusion: 'SUCCESS'
+                }
+                failure {
+                    echo "❌ ETL Framework installation failed"
+                    publishChecks name: 'FRAMEWORK-INSTALL', title: 'ETL Framework Install', summary: 'Failed to install framework', conclusion: 'FAILURE'
+                }
+            }
+        }
+        
         stage('Prepare Database Schema') {
             steps {
                 echo "Preparing demo-dw and dbci-tools repositories..."
@@ -229,6 +251,7 @@ pipeline {
             
             Pipeline Summary:
             ✅ ETL Framework: Cloned and ready
+            ✅ Framework Install: Dependencies installed
             ✅ Database Schema: demo-dw and dbci-tools cloned
             ✅ DBCI Setup: Tools environment configured
             ✅ Schema Build: HCL schema generated from SQL files

@@ -23,7 +23,7 @@ class Config:
         self.docker_dir = self.devops_dir / "docker"
         self.volumes_dir = self.docker_dir / ".volumes"
         self.template_dir = self.devops_dir / "templates"
-        self.project_templates_dir = self.devops_dir / "project_templates"
+        self.projects_dir = self.devops_dir / "projects"
 
         # Load environment variables only if explicitly provided
         if env_file:
@@ -121,7 +121,7 @@ class Config:
         Raises:
             FileNotFoundError: If template doesn't exist
         """
-        template_path = self.project_templates_dir / template_name
+        template_path = self.projects_dir / template_name
         if not template_path.exists():
             raise FileNotFoundError(f"Project template not found: {template_path}")
         return template_path

@@ -309,11 +309,7 @@ def validate_command(args: List[str]) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Auto-detect HCL file (looks for ../demo-dw/target/schema.hcl)
-  etl VALIDATE /path/to/demo-etl
-  ./run.sh VALIDATE .
-  
-  # Explicit HCL file path
+  # Explicit HCL file path (required)
   etl VALIDATE /path/to/demo-etl /path/to/schema.hcl
   ./run.sh VALIDATE . ../demo-dw/target/schema.hcl
         """
@@ -349,8 +345,8 @@ Examples:
     if not hcl_file.exists():
         print(f"✗ Error: HCL file not found: {hcl_file}")
         print("")
-        print("Please run dbci BUILD on the database project first:")
-        print("  cd ../demo-dw")
+        print("Please run dbci BUILD on your database project first:")
+        print("  cd /path/to/database-project")
         print("  dbci BUILD .")
         return 1
     

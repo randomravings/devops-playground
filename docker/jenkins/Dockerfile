@@ -1,11 +1,12 @@
-FROM jenkins/jenkins:latest-jdk21
+# FROM jenkins/jenkins:latest-jdk21
+FROM jenkins/jenkins:2.535-jdk21
 
 USER root
 
 # Install maven (allows building maven projects directly on the master - ok for playground)
 RUN apt-get update \
- && apt-get install -y maven ca-certificates curl unzip \
- && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y maven ca-certificates curl unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy plugins list and CLI wrapper
 COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
@@ -21,18 +22,18 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install build dependencies for Python 3.12
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      build-essential \
-      zlib1g-dev \
-      libncurses5-dev \
-      libgdbm-dev \
-      libnss3-dev \
-      libssl-dev \
-      libreadline-dev \
-      libffi-dev \
-      libsqlite3-dev \
-      libbz2-dev \
-      liblzma-dev \
-      wget \
+        build-essential \
+        zlib1g-dev \
+        libncurses5-dev \
+        libgdbm-dev \
+        libnss3-dev \
+        libssl-dev \
+        libreadline-dev \
+        libffi-dev \
+        libsqlite3-dev \
+        libbz2-dev \
+        liblzma-dev \
+        wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and install Python 3.12
@@ -53,11 +54,11 @@ RUN ln -sf /usr/local/bin/python3.12 /usr/bin/python3.12 && \
 # OS deps + UTF-8 locale
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      pgformatter \
-      diffutils \
-      git openssh-client \
-      curl jq ca-certificates \
-      locales \
+        pgformatter \
+        diffutils \
+        git openssh-client \
+        curl jq ca-certificates \
+        locales \
     && sed -i 's/# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
     && locale-gen && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*

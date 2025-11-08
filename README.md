@@ -46,12 +46,23 @@ deactivate
 See how commands compose together:
 
 ```bash
-./examples/acme_org.sh                              # Full org setup
-./examples/acme_user_local.sh john db-demo ~/Local  # Clone to local workspace for 'john'
-./examples/teardown.sh                              # Cleanup
+./examples/acme_org.sh                          # Set up acme org in Gitea and Jenkins.
+./examples/acme_user_local.sh john ~/Local      # Clone to local workspace for 'john'.
+./examples/acme_user_test.sh john ~/Local       # Run all builds locally for 'john'.
+./examples/teardown.sh                          # Cleanup Docker, local workspace must be cleaned up manually.
 ```
 
-The user example clones a repo to your local filesystem (`~/Local/john/db-demo`) and initializes it with project templates if needed.
+The examples in this case presuppose and existing folder 'Local' in home directory. There are two users in the Acme org 'john' and 'jane'.
+There are four projects in the current setup:
+
+- *dbci-tools*: a custom build CLI tool based on Python, SQLFluff, and Atlas for doing Postgres database checks.
+- *etl-franeworjk*: a minimalistic ETL framework that can build Star schemas from metadata that describes sources and target model.
+- *demo-dw*: a small Star schema in Postgres syntax, inlcuding selected SQLFluff config file for linting.
+- *demo-etl*: an ETL pipeline based on Dagster that uses the ETL Framework and a metadata file to describe the source and target model.
+
+> Note: The `dbci-tool` and `etl-franework` are general purpose tools and already initialized on `origin/main` already, but the demo projects `demo-db` and `demo-etl` are "actual" projects and checked out locally to a `feature-init` branch. The idea is now to experiment with commit, pull requests, and merge to master to demo a Data as Code way of working.
+
+To learn more about dbci-tools:
 
 ## Dependencies
 

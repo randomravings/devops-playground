@@ -58,8 +58,8 @@ def init_maven(target_dir: str) -> None:
     parent_dir = target_path.parent
     leaf_dir = target_path.name
 
-    # Check for Jenkinsfile template in project_templates/maven-project
-    template_dir = config.project_templates_dir / "maven-project"
+    # Check for Jenkinsfile template in projects/maven-project
+    template_dir = config.projects_dir / "maven-project"
     template_path = template_dir / "Jenkinsfile"
     if not template_path.exists():
         raise DevOpsError(f"Jenkinsfile template not found: {template_path}")

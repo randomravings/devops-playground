@@ -103,7 +103,7 @@ echo "✅ demo-dw cloned"
 # Check if demo-dw needs initialization
 if [ ! -f "${WORKSPACE}/demo-dw/Jenkinsfile" ]; then
     echo "   Jenkinsfile not found - initializing with template"
-    rsync -av --exclude='.git' "${PROJECT_ROOT}/project_templates/demo-dw/" "${WORKSPACE}/demo-dw/"
+    rsync -av --exclude='.git' "${PROJECT_ROOT}/projects/demo-dw/" "${WORKSPACE}/demo-dw/"
     cd "${WORKSPACE}/demo-dw"
     git config user.name "${USERNAME}"
     git config user.email "${USERNAME}@${ORG}.demo"
@@ -121,7 +121,7 @@ echo "✅ demo-etl cloned"
 # Check if demo-etl needs initialization
 if [ ! -f "${WORKSPACE}/demo-etl/pyproject.toml" ]; then
     echo "   pyproject.toml not found - initializing with template"
-    rsync -av --exclude='.git' "${PROJECT_ROOT}/project_templates/demo-etl/" "${WORKSPACE}/demo-etl/"
+    rsync -av --exclude='.git' "${PROJECT_ROOT}/projects/demo-etl/" "${WORKSPACE}/demo-etl/"
     cd "${WORKSPACE}/demo-etl"
     git config user.name "${USERNAME}"
     git config user.email "${USERNAME}@${ORG}.demo"
