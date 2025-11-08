@@ -60,7 +60,7 @@
     <org.jenkinsci.plugin.gitea.GiteaSCMNavigator plugin="gitea@250.v76a_0b_d4fef5b_">
       <serverUrl>${JOB_ORG_URL}</serverUrl>
       <repoOwner>${JOB_ORG_NAME}</repoOwner>
-      <credentialsId>${JOB_ORG_CREDS}</credentialsId>
+      <credentialsId>gitea-credentials</credentialsId>
       <traits>
         <org.jenkinsci.plugin.gitea.BranchDiscoveryTrait>
           <strategyId>1</strategyId>

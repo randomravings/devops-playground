@@ -60,6 +60,37 @@ def create_credentials(
     print(f"✅ Created credential '{cred_id}'")
 
 
+def delete_credentials(cred_id: str) -> None:
+    """
+    Delete a credential from Jenkins.
+
+    Args:
+        cred_id: Credential ID to delete
+
+    Raises:
+        DevOpsError: If credential deletion fails
+    """
+    # Check if credentials exist
+    if not credentials_exist(cred_id):
+        print(f"Credential '{cred_id}' does not exist in Jenkins; skipping deletion.")
+        return
+
+    print(f"Deleting Jenkins credential '{cred_id}'...")
+
+    from .utils import docker_exec
+    import subprocess
+
+    cmd = ["docker", "exec", "-i", "jenkins", "/usr/local/bin/jenkins-cli",
+           "delete-credentials", "system::system::jenkins", "_", cred_id]
+    result = subprocess.run(cmd, check=False, capture_output=True)
+
+    if result.returncode != 0:
+        stderr = result.stderr.decode() if result.stderr else ""
+        raise DevOpsError(f"Failed to delete Jenkins credential (exit code {result.returncode}): {stderr}")
+
+    print(f"✅ Deleted credential '{cred_id}'")
+
+
 def create_org(
     job_name: str,
     org_name: str,
@@ -116,6 +147,36 @@ def create_org(
         raise DevOpsError(f"Failed to create Jenkins job (exit code {result.returncode}): {stderr}")
 
     print(f"✅ Created job '{job_name}' in Jenkins.")
+
+
+def delete_job(job_name: str) -> None:
+    """
+    Delete a Jenkins job.
+
+    Args:
+        job_name: Job name to delete
+
+    Raises:
+        DevOpsError: If job deletion fails
+    """
+    # Check if job exists
+    if not job_exists(job_name):
+        print(f"Job '{job_name}' does not exist in Jenkins; skipping deletion.")
+        return
+
+    print(f"Deleting Jenkins job '{job_name}'...")
+
+    from .utils import docker_exec
+    import subprocess
+
+    cmd = ["docker", "exec", "-i", "jenkins", "/usr/local/bin/jenkins-cli", "delete-job", job_name]
+    result = subprocess.run(cmd, check=False, capture_output=True)
+
+    if result.returncode != 0:
+        stderr = result.stderr.decode() if result.stderr else ""
+        raise DevOpsError(f"Failed to delete Jenkins job (exit code {result.returncode}): {stderr}")
+
+    print(f"✅ Deleted job '{job_name}'")
 
 
 def job_exists(job_name: str) -> bool:

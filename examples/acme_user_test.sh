@@ -38,9 +38,11 @@ if [ -z "${USERNAME}" ] || [ -z "${WORKSPACE_BASE}" ]; then
     exit 1
 fi
 
+
 # Expand tilde in path
 WORKSPACE_BASE=$(eval echo "${WORKSPACE_BASE}")
-WORKSPACE="${WORKSPACE_BASE}/${USERNAME}"
+ORG="acme"
+WORKSPACE="${WORKSPACE_BASE}/${ORG}/${USERNAME}"
 
 echo "============================================================"
 echo "Run All: Complete DBCI and ETL Workflow"
@@ -48,6 +50,7 @@ echo "============================================================"
 echo "User:      ${USERNAME}"
 echo "Workspace: ${WORKSPACE}"
 echo ""
+
 
 # Validate workspace exists
 if [ ! -d "${WORKSPACE}" ]; then
@@ -122,7 +125,7 @@ echo ""
 
 echo "2.1 Installing etl-framework..."
 cd "${ETL_FRAMEWORK}"
-# ./run.sh INSTALL
+./run.sh INSTALL
 echo "✅ etl-framework installation complete"
 echo ""
 

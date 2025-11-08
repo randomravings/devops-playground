@@ -8,6 +8,9 @@ import click
 from . import config, env, gitea, jenkins, project
 from .utils import DevOpsError
 
+import os
+import pathlib
+
 
 class AliasedGroup(click.Group):
     """A Click Group that supports command aliases."""
@@ -68,207 +71,231 @@ def cli(ctx, env_file):
 
 
 # Environment commands
-@cli.group(name="environment", cls=AliasedGroup)
+@cli.group(name="env", cls=AliasedGroup)
 def environment():
     """Environment lifecycle management."""
     pass
 
-environment.aliases = ["env"]
 
-
-@environment.command("setup")
+@environment.command("up")
 def env_setup():
-    """Setup the DevOps environment. (Alias: up)"""
-    try:
-        env.setup(create_default_org=True)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
-
-env_setup.aliases = ["up"]
+    """Setup the DevOps environment."""
+    env.setup()
 
 
-@environment.command("teardown")
+@environment.command("down")
 def env_teardown():
-    """Teardown the DevOps environment. (Alias: down)"""
+    """Teardown the DevOps environment."""
     try:
         env.teardown()
     except DevOpsError as e:
         click.echo(f"❌ Error: {e}", err=True)
         sys.exit(1)
 
-env_teardown.aliases = ["down"]
-
 
 # Gitea commands
+
 @cli.group(name="git", cls=AliasedGroup)
 def git():
-    """Gitea operations."""
+        """
+        Gitea operations.
+
+        Subgroups:
+            repo      Manage repositories (create, init, remove)
+            team      Manage teams
+            user      Manage users
+            member    Manage team membership
+            protect   Manage branch protection
+            org       Manage organizations
+
+        Common commands:
+            dt git repo new <name> -o <org>
+            dt git repo init <repo_name> -o <org> -d <dir>
+            dt git team new <name> -o <org> -m <perm>
+            dt git user new <name> -o <org>
+            dt git member new <user> -o <org> -t <team>
+            dt git org new <name>
+            dt git clone <repo> -o <org> -d <dest> -u <user> -p <password>
+        """
+        pass
+
+# Clone command must be defined immediately after git group
+@git.command("clone")
+@click.argument("repo")
+@click.option("--org", "-o", required=True, help="Organization name")
+@click.option("--dir", "-d", required=True, type=click.Path(file_okay=False), help="Destination directory")
+@click.option("--user", "-u", required=True, help="Username")
+@click.option("--password", "-p", required=True, help="Password")
+def git_clone(repo, org, dir, user, password):
+    """Clone a Gitea repository to a local directory."""
+    from devops_tools import gitea
+    import os
+    import pathlib
+    # Ensure destination directory exists
+    dest_dir = os.path.expanduser(dir)
+    # Compose the full path: <dest>/<org>/<user>/<repo>
+    full_path = os.path.join(dest_dir, org, user, repo)
+    pathlib.Path(full_path).parent.mkdir(parents=True, exist_ok=True)
+    gitea.clone_repo(repo, org, full_path, user, password)
+
+# Organization subcommands
+@git.group()
+def org():
+    """Organization operations."""
     pass
 
-git.aliases = ["gitea"]
-
-
-@git.command("create-user")
-@click.argument("username")
-@click.option("--password", prompt=True, hide_input=True, help="User password")
-@click.option("--org", required=True, help="Organization (for email)")
-@click.option("--admin", is_flag=True, help="Make user an admin")
-def gitea_create_user(username, password, org, admin):
-    """Create a user in Gitea. (Alias: user)"""
-    try:
-        gitea.create_user(username, password, org, admin)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
-
-gitea_create_user.aliases = ["user"]
-
-
-@git.command("user-exists")
-@click.argument("username")
-def gitea_user_exists(username):
-    """Check if a user exists in Gitea. (Alias: check-user)"""
-    exists = gitea.user_exists(username)
-    if exists:
-        click.echo(f"✅ User '{username}' exists")
-    else:
-        click.echo(f"❌ User '{username}' does not exist")
-        sys.exit(1)
-
-gitea_user_exists.aliases = ["check-user"]
-
-
-@git.command("create-org")
-@click.argument("org_name")
-@click.option("--owner", required=True, help="Owner username")
-@click.option("--description", default="", help="Organization description")
-def gitea_create_org(org_name, owner, description):
-    """Create an organization in Gitea. (Alias: org)"""
-    try:
-        gitea.create_org(org_name, owner, description)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
-
-gitea_create_org.aliases = ["org"]
-
-
-@git.command("create-team")
-@click.argument("team_name")
-@click.option("--org", required=True, help="Organization name")
-@click.option("--permission", default="write", type=click.Choice(["read", "write", "admin"]), help="Team permission")
-@click.option("--description", default="", help="Team description")
-def gitea_create_team(team_name, org, permission, description):
-    """Create a team in an organization. (Alias: team)"""
-    try:
-        gitea.create_team(team_name, org, permission, description)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
-
-gitea_create_team.aliases = ["team"]
-
-
-@git.command("add-team-member")
-@click.argument("team_name")
-@click.option("--org", required=True, help="Organization name")
-@click.option("--username", required=True, help="Username to add")
-def gitea_add_team_member(team_name, org, username):
-    """Add a user to a team. (Alias: add-member)"""
-    try:
-        gitea.add_team_members(team_name, org, username)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
-
-gitea_add_team_member.aliases = ["add-member"]
-
-
-@git.command("create-repo")
+@org.command("new")
 @click.argument("name")
-@click.option("--org", required=True, help="Organization name")
-@click.option("--description", default="", help="Repository description")
-def gitea_create_repo(name, org, description):
-    """Create a repository in an organization. (Alias: repo)"""
-    try:
-        gitea.create_repo(name, org, description)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
+@click.option("--description", "-d", default="", help="Organization description")
+@click.option("--owner", "-o", required=False, help="Owner username (optional)")
+def org_new(name, description, owner):
+    """Create a new organization."""
+    from devops_tools import gitea
+    # Use admin user as owner if not specified
+    if not owner:
+        from devops_tools.config import get_config
+        owner = get_config().gitea_admin_user
+    gitea.create_org(name, owner, description)
 
-gitea_create_repo.aliases = ["repo"]
-
-
-@git.command("branch-protection")
+@org.command("rem")
 @click.argument("name")
-@click.option("--org", required=True, help="Organization name")
-@click.option("--team", default="", help="Team name for protection")
-@click.option("--jenkins-folder", default="", help="Jenkins folder name (defaults to '{org}-folder')")
-@click.option("--enable-status-check", is_flag=True, help="Require Jenkins pipeline status check to pass")
-def gitea_branch_protection(name, org, team, jenkins_folder, enable_status_check):
-    """Setup branch protection on main branch. (Alias: protect)"""
-    try:
-        gitea.setup_branch_protection(name, org, team, jenkins_folder, enable_status_check)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
-
-gitea_branch_protection.aliases = ["protect"]
+def org_rem(name):
+    """Remove an organization."""
+    from devops_tools import gitea
+    gitea.delete_org(name)
 
 
-@git.command("auto-delete-branch")
+
+# member subcommands (after webhook, before Jenkins)
+@git.group()
+def member():
+    """Team membership operations."""
+
+
+
+
+@member.command("new")
+@click.option("--org", "-o", required=True, help="Organization name")
+@click.option("--team", "-t", required=True, help="Team name")
+@click.argument("user")
+def member_new(org, team, user):
+    """Add a user to a team."""
+    gitea.add_team_members(team, org, user)
+
+
+
+
+
+@member.command("rem")
+@click.option("--org", "-o", required=True, help="Organization name")
+@click.option("--team", "-t", required=True, help="Team name")
+@click.argument("user")
+def member_rem(org, team, user):
+    """Remove a user from a team."""
+    gitea.remove_team_member(team, org, user)
+
+
+# repo subcommands
+@git.group()
+def repo():
+    """Repository operations."""
+
+@repo.command("new")
 @click.argument("name")
-@click.option("--org", required=True, help="Organization name")
-def gitea_auto_delete_branch(name, org):
-    """Enable auto-delete of branch after PR merge."""
-    try:
-        gitea.enable_auto_delete_branch(name, org)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
+@click.option("--org", "-o", required=True, help="Organization name")
+@click.option("--description", "-d", default="", help="Repository description")
+def repo_new(name, org, description):
+    """Create a new repository."""
+    gitea.create_repo(name, org, description)
 
-
-@git.command("clone")
-@click.argument("name")
-@click.option("--org", required=True, help="Organization name")
-@click.option("--dest", required=True, type=click.Path(), help="Destination directory")
-@click.option("--username", required=True, help="Username for authentication")
-@click.option("--password", prompt=True, hide_input=True, help="Password for authentication")
-def gitea_clone(name, org, dest, username, password):
-    """Clone a repository from Gitea."""
-    try:
-        gitea.clone_repo(name, org, dest, username, password)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
-
-
-@git.command("setup-webhook")
-def gitea_setup_webhook():
-    """Setup default webhook for Jenkins. (Alias: webhook)"""
-    try:
-        gitea.setup_default_webhook()
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
-        sys.exit(1)
-
-gitea_setup_webhook.aliases = ["webhook"]
-
-
-@git.command("init-repo")
+@repo.command("init")
 @click.argument("repo_name")
-@click.option("--org", required=True, help="Organization name")
-@click.option("--template", required=True, help="Template name (e.g., dbci-tools, demo-dw, demo-etl)")
-def gitea_init_repo(repo_name, org, template):
-    """Initialize a repository with a template. (Alias: init)"""
-    try:
-        project.init_and_push_repo(repo_name, org, template)
-    except DevOpsError as e:
-        click.echo(f"❌ Error: {e}", err=True)
+@click.option("--org", "-o", required=True, help="Organization name")
+@click.option("--dir", "-d", required=True, type=click.Path(exists=True, file_okay=False), help="Source folder to initialize repo from")
+def repo_init(repo_name, org, dir):
+    """Initialize a repository from a source folder."""
+    project.init_and_push_repo(repo_name, org, dir)
+
+
+@repo.command("rem")
+@click.argument("name")
+@click.option("--org", "-o", required=True, help="Organization name")
+def repo_rem(name, org):
+    """Remove a repository."""
+    gitea.delete_repo(name, org)
+
+# protect subcommands
+@repo.group()
+def protect():
+    """Branch protection management."""
+
+
+@protect.command("new")
+@click.option("--org", "-o", required=True, help="Organization name")
+@click.argument("repo")
+@click.option("--team", "-t", required=True, help="Comma-separated team names (e.g. devs,qa)")
+@click.option("--branch", "-b", default="main", show_default=True, help="Branch name")
+@click.option("--status-check", "-s", is_flag=True, help="Enable status checks on branch protection")
+def protect_add(org, repo, team, branch, status_check):
+    """Add branch protection."""
+    team_list = [t.strip() for t in team.split(",") if t.strip()]
+    gitea.setup_branch_protection(repo, org, team_list, branch, status_check)
+
+
+    # ...existing code...
+
+
+# user subcommands
+@git.group()
+def user():
+    """User operations."""
+
+@user.command("get")
+@click.argument("name")
+def user_get(name):
+    """Get user info: prints username if exists."""
+    if gitea.user_exists(name):
+        print(name)
+        sys.exit(0)
+    else:
         sys.exit(1)
 
-gitea_init_repo.aliases = ["init"]
+@user.command("new")
+@click.argument("name")
+@click.option("--org", "-o", required=True, help="Organization name")
+@click.option("--password", "-p", default="secret", help="User password")
+@click.option("--admin", "-a", is_flag=True, help="Make user an admin")
+def user_new(name, org, password, admin):
+    """Create a new user."""
+    gitea.create_user(name, password, org, admin)
+
+@user.command("rem")
+@click.argument("name")
+def user_rem(name):
+    """Remove a user."""
+    gitea.delete_user(name)
+
+# team subcommands
+@git.group()
+def team():
+    """Team operations."""
+
+
+@team.command("new")
+@click.argument("name")
+@click.option("--org", "-o", required=True, help="Organization name")
+@click.option("--permission", "-m", type=click.Choice(["read", "write", "admin"]), default="write", help="Team permission")
+def team_new(name, org, permission):
+    """Create a new team."""
+    gitea.create_team(name, org, permission)
+
+@team.command("rem")
+@click.argument("name")
+@click.option("--org", "-o", required=True, help="Organization name")
+def team_rem(name, org):
+    """Remove a team."""
+    gitea.delete_team(name, org)
+
 
 
 # Jenkins commands
@@ -277,104 +304,119 @@ def ci():
     """Jenkins operations."""
     pass
 
-ci.aliases = ["jenkins", "j"]
+# creds subcommands
+@ci.group()
+def creds():
+    """Jenkins credentials management."""
+    pass
 
-
-@ci.command("create-credentials")
-@click.argument("cred_id")
-@click.option("--username", required=True, help="Username")
-@click.option("--password", prompt=True, hide_input=True, help="Password")
-@click.option("--description", default="", help="Credential description")
-def jenkins_create_creds(cred_id, username, password, description):
-    """Create Jenkins credentials. (Alias: creds)"""
+@creds.command("new")
+@click.argument("name")
+@click.option("--user", "-u", required=True, help="Jenkins username")
+@click.option("--token", "-t", required=True, help="Jenkins API token")
+def creds_new(name, user, token):
+    """Create new Jenkins credentials."""
     try:
-        jenkins.create_credentials(cred_id, username, password, description)
+        jenkins.create_credentials(name, user, token)
     except DevOpsError as e:
         click.echo(f"❌ Error: {e}", err=True)
         sys.exit(1)
 
-jenkins_create_creds.aliases = ["creds"]
-
-
-@ci.command("create-org")
-@click.argument("job_name")
-@click.option("--org", required=True, help="Gitea organization name")
-@click.option("--credentials", required=True, help="Jenkins credentials ID")
-@click.option("--description", default="", help="Job description")
-def jenkins_create_org(job_name, org, credentials, description):
-    """Create an organization folder job in Jenkins. (Alias: org)"""
+@creds.command("rem")
+@click.argument("name")
+def creds_rem(name):
+    """Remove Jenkins credentials."""
     try:
-        jenkins.create_org(job_name, org, credentials, description)
+        jenkins.delete_credentials(name)
     except DevOpsError as e:
         click.echo(f"❌ Error: {e}", err=True)
         sys.exit(1)
 
-jenkins_create_org.aliases = ["org"]
+# org subcommands
+@ci.group()
+def org():
+    """Jenkins folder/org management."""
+    pass
 
+@org.command("new")
+@click.argument("org")
+def org_new(org):
+    """Create new Jenkins folder/org (name must match Gitea org)."""
+    try:
+        jenkins.create_org(f"{org}-folder", org, "gitea")
+    except DevOpsError as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        sys.exit(1)
 
-@ci.command("job-exists")
-@click.argument("job_name")
-def jenkins_job_exists(job_name):
-    """Check if a Jenkins job exists. (Alias: check)"""
-    exists = jenkins.job_exists(job_name)
+@org.command("rem")
+@click.argument("org")
+def org_rem(org):
+    """Remove Jenkins folder/org (name must match Gitea org)."""
+    try:
+        jenkins.delete_job(f"{org}-folder")
+    except DevOpsError as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        sys.exit(1)
+
+# job subcommands
+@ci.group()
+def job():
+    """Jenkins job operations."""
+    pass
+
+@job.command("exists")
+@click.argument("name")
+def job_exists(name):
+    """Check if a Jenkins job exists."""
+    exists = jenkins.job_exists(name)
     if exists:
-        click.echo(f"✅ Job '{job_name}' exists")
+        click.echo(f"✅ Job '{name}' exists")
     else:
-        click.echo(f"❌ Job '{job_name}' does not exist")
+        click.echo(f"❌ Job '{name}' does not exist")
         sys.exit(1)
-
-jenkins_job_exists.aliases = ["check"]
 
 
 # Project commands
-@cli.group(name="projects", cls=AliasedGroup)
-def projects():
-    """Project initialization."""
+@cli.group(name="src", cls=AliasedGroup)
+def src():
+    """Project source initialization."""
     pass
 
-projects.aliases = ["proj", "p"]
 
-
-@projects.command("init-maven")
+@src.command("maven")
 @click.argument("target_dir", type=click.Path())
 def project_init_maven(target_dir):
-    """Initialize a Maven project. (Alias: maven)"""
+    """Initialize a Maven project."""
     try:
         project.init_maven(target_dir)
     except DevOpsError as e:
         click.echo(f"❌ Error: {e}", err=True)
         sys.exit(1)
 
-project_init_maven.aliases = ["maven"]
 
-
-@projects.command("init-postgres")
+@src.command("postgres")
 @click.argument("target_dir", type=click.Path())
 def project_init_postgres(target_dir):
-    """Initialize a PostgreSQL database project. (Aliases: postgres, pg)"""
+    """Initialize a PostgreSQL database project."""
     try:
         project.init_postgres(target_dir)
     except DevOpsError as e:
         click.echo(f"❌ Error: {e}", err=True)
         sys.exit(1)
 
-project_init_postgres.aliases = ["postgres", "pg"]
 
-
-@projects.command("init-dbci-tools")
+@src.command("dbci")
 @click.argument("target_dir", type=click.Path())
 def project_init_dbci(target_dir):
-    """Initialize a dbci-tools project. (Alias: dbci)"""
+    """Initialize a dbci-tools project."""
     try:
         project.init_dbci_tools(target_dir)
     except DevOpsError as e:
         click.echo(f"❌ Error: {e}", err=True)
         sys.exit(1)
 
-project_init_dbci.aliases = ["dbci"]
 
-
-@projects.command("commit")
+@src.command("commit")
 @click.argument("target_dir", type=click.Path(exists=True))
 @click.option("--message", "-m", required=True, help="Commit message")
 def project_commit(target_dir, message):

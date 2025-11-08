@@ -12,7 +12,7 @@ from .config import get_config
 from .utils import docker_cp, docker_exec, wait_for_http, DevOpsError
 
 
-def setup(create_default_org: bool) -> None:
+def setup() -> None:
     """
     Setup the DevOps environment (Jenkins, Gitea, Docker).
 
@@ -21,12 +21,8 @@ def setup(create_default_org: bool) -> None:
     2. Configures Jenkins init scripts
     3. Starts Docker containers
     4. Waits for services to be ready
-    5. Creates admin users
-    6. Optionally creates default organization
-    7. Sets up Jenkins CLI
-
-    Args:
-        create_default_org: Whether to create the default organization (required)
+    5. Creates admin user
+    6. Sets up Jenkins CLI
 
     Raises:
         DevOpsError: If setup fails
@@ -116,22 +112,20 @@ def setup(create_default_org: bool) -> None:
         gitea.create_user(
             config.gitea_admin_user,
             config.gitea_admin_password,
-            config.gitea_default_org,
+            "system",  # Using "system" as org for admin email
             admin=True,
         )
     except Exception as e:
         print(f"gitea_create_user returned error (user may already exist): {e}")
 
-    # Create Gitea organization (if requested)
-    if create_default_org:
-        print(f"Creating organization '{config.gitea_default_org}' with owner '{config.gitea_admin_user}'...")
-        try:
-            gitea.create_org(config.gitea_default_org, config.gitea_admin_user)
-        except Exception as e:
-            print(f"gitea_create_org returned error (org may already exist): {e}")
-
     # Setup Jenkins CLI
     _setup_jenkins_cli(config)
+
+    # Setup dt git webhook for Jenkins integration
+    try:
+        gitea.setup_dt_git_webhook()
+    except Exception as e:
+        print(f"Warning: dt git webhook setup failed: {e}")
 
     print("✅ DevOps environment setup complete!")
 
