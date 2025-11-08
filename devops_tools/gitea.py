@@ -92,6 +92,43 @@ def create_user(
         print(f"User '{username}' created successfully")
 
 
+def delete_user(username: str) -> None:
+    """
+    Delete a user from Gitea.
+
+    Args:
+        username: Username to delete
+
+    Raises:
+        HTTPError: If user deletion fails
+    """
+    config = get_config()
+    api_base = f"{config.gitea_api_url}/api/v1"
+    
+    # Check if user exists
+    if not user_exists(username):
+        print(f"User '{username}' does not exist; skipping deletion.")
+        return
+
+    print(f"Deleting user '{username}'...")
+
+    try:
+        response = requests.delete(
+            f"{api_base}/admin/users/{username}",
+            auth=HTTPBasicAuth(config.gitea_admin_user, config.gitea_admin_password),
+            timeout=30,
+        )
+
+        if response.status_code == 204:
+            print(f"✅ User '{username}' deleted successfully")
+        elif response.status_code == 404:
+            print(f"User '{username}' not found (already deleted?)")
+        else:
+            raise HTTPError(f"Failed to delete user: HTTP {response.status_code}\n{response.text}")
+    except requests.exceptions.RequestException as e:
+        raise HTTPError(f"Failed to delete user: {e}") from e
+
+
 def repo_file_exists(repo_name: str, org_name: str, file_path: str, branch: str = "main") -> bool:
     """
     Check if a file exists in a Gitea repository.
@@ -208,6 +245,43 @@ def create_org(org_name: str, owner: str, description: str = "") -> None:
         raise HTTPError(f"Failed to create organization: {e}") from e
 
 
+def delete_org(org_name: str) -> None:
+    """
+    Delete an organization from Gitea.
+
+    Args:
+        org_name: Organization name to delete
+
+    Raises:
+        HTTPError: If organization deletion fails
+    """
+    config = get_config()
+    api_base = f"{config.gitea_api_url}/api/v1"
+    
+    # Check if organization exists
+    if not org_exists(org_name):
+        print(f"Organization '{org_name}' does not exist; skipping deletion.")
+        return
+
+    print(f"Deleting organization '{org_name}'...")
+
+    try:
+        response = requests.delete(
+            f"{api_base}/orgs/{org_name}",
+            auth=HTTPBasicAuth(config.gitea_admin_user, config.gitea_admin_password),
+            timeout=30,
+        )
+
+        if response.status_code == 204:
+            print(f"✅ Organization '{org_name}' deleted successfully")
+        elif response.status_code == 404:
+            print(f"Organization '{org_name}' not found (already deleted?)")
+        else:
+            raise HTTPError(f"Failed to delete organization: HTTP {response.status_code}\n{response.text}")
+    except requests.exceptions.RequestException as e:
+        raise HTTPError(f"Failed to delete organization: {e}") from e
+
+
 def create_team(
     team_name: str,
     org_name: str,
@@ -279,17 +353,16 @@ def create_team(
         raise HTTPError(f"Failed to create team: {e}") from e
 
 
-def add_team_members(team_name: str, org_name: str, username: str) -> None:
+def delete_team(team_name: str, org_name: str) -> None:
     """
-    Add a user to a team.
+    Delete a team from an organization.
 
     Args:
         team_name: Team name
         org_name: Organization name
-        username: Username to add
 
     Raises:
-        HTTPError: If operation fails
+        HTTPError: If team deletion fails
     """
     config = get_config()
     api_base = f"{config.gitea_api_url}/api/v1"
@@ -311,9 +384,101 @@ def add_team_members(team_name: str, org_name: str, username: str) -> None:
 
         data = response.json()
         if not data.get("data"):
+            print(f"Team '{team_name}' not found in org '{org_name}'; skipping deletion.")
+            return
+
+        team_id = data["data"][0]["id"]
+
+        print(f"Deleting team '{team_name}' (id {team_id}) from org '{org_name}'...")
+
+        # Delete team
+        delete_response = requests.delete(
+            f"{api_base}/teams/{team_id}",
+            auth=HTTPBasicAuth(*creds),
+            timeout=30,
+        )
+
+        if delete_response.status_code == 204:
+            print(f"✅ Team '{team_name}' deleted successfully")
+        elif delete_response.status_code == 404:
+            print(f"Team not found (already deleted?)")
+        else:
+            raise HTTPError(f"Failed to delete team: HTTP {delete_response.status_code}\n{delete_response.text}")
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPError(f"Failed to delete team: {e}") from e
+
+
+def add_team_members(team_name: str, org_name: str, username: str) -> None:
+    """
+    Add a user to a team.
+
+    Args:
+        team_name: Team name
+        org_name: Organization name
+        username: Username to add
+
+    Raises:
+        HTTPError: If operation fails
+    """
+    config = get_config()
+    api_base = f"{config.gitea_api_url}/api/v1"
+    creds = (config.gitea_admin_user, config.gitea_admin_password)
+
+
+    # Search for team ID
+    search_endpoint = f"{api_base}/orgs/{org_name}/teams/search"
+    try:
+        response = requests.get(
+            search_endpoint,
+            auth=HTTPBasicAuth(*creds),
+            params={"q": team_name, "page": 1, "limit": 1},
+            headers={"Accept": "application/json"},
+            timeout=30,
+        )
+
+        if response.status_code != 200:
+            raise HTTPError(f"Team search failed: HTTP {response.status_code}\n{response.text}")
+
+        data = response.json()
+        if not data.get("data"):
             raise HTTPError(f"Team '{team_name}' not found")
 
         team_id = data["data"][0]["id"]
+
+
+
+        # Check if user is already a member (handle all status codes and fallback to explicit member list)
+        member_check = requests.get(
+            f"{api_base}/teams/{team_id}/members/{username}",
+            auth=HTTPBasicAuth(*creds),
+            timeout=30,
+        )
+        # Only print membership check status if not 404 (404 is expected for new members)
+        if member_check.status_code != 404:
+            print(f"Membership check status for user '{username}' in team '{team_name}': {member_check.status_code}")
+        if member_check.status_code == 204:
+            print(f"User '{username}' is already a member of team '{team_name}'. Skipping.")
+            return
+        elif member_check.status_code == 200:
+            # Some Gitea versions return 200 with user info if member
+            print(f"User '{username}' is already a member of team '{team_name}'. Skipping.")
+            return
+        elif member_check.status_code == 404:
+            # Not a member, proceed silently
+            pass
+        else:
+            # Fallback: check explicit member list
+            members_resp = requests.get(
+                f"{api_base}/teams/{team_id}/members",
+                auth=HTTPBasicAuth(*creds),
+                timeout=30,
+            )
+            if members_resp.status_code == 200:
+                members = [m.get("username") for m in members_resp.json()]
+                if username in members:
+                    print(f"User '{username}' is already a member of team '{team_name}'. Skipping.")
+                    return
 
         print(f"Adding user '{username}' to team '{team_name}' (id {team_id})...")
 
@@ -358,12 +523,13 @@ def create_repo(name: str, org: str, description: str = "") -> None:
     # Create repository
     create_url = f"{config.gitea_api_url}/api/v1/orgs/{org}/repos"
 
-    # Load template and substitute
-    template_path = config.get_template_path("gitea/repo.json")
+
+    # Load post-repo payload template
+    template_path = config.get_template_path("gitea/post-repo.json")
     with open(template_path) as f:
         template = Template(f.read())
-
-    payload_str = template.substitute(NAME=name, DESCRIPTION=description)
+        payload = json.loads(template.substitute(NAME=name, DESCRIPTION=description))
+        payload_str = json.dumps(payload)
 
     print(f"Creating repository '{name}' under org '{org}'...")
 
@@ -374,19 +540,66 @@ def create_repo(name: str, org: str, description: str = "") -> None:
         config.gitea_admin_password,
     )
 
+
     if status_code == 201:
         print("Repository created successfully.")
+        # Patch repo to enable auto-delete branch after merge
+        patch_template_path = config.get_template_path("gitea/patch-repo.json")
+        with open(patch_template_path) as f:
+            patch_payload = json.load(f)
+        patch_repo(name, org, patch_payload)
     else:
         raise HTTPError(f"Failed to create repository: HTTP {status_code}\n{response}")
 
 
-def enable_auto_delete_branch(name: str, org: str) -> None:
+def delete_repo(name: str, org: str) -> None:
     """
-    Enable automatic deletion of head branch after PR merge.
+    Delete a repository from an organization.
 
     Args:
         name: Repository name
         org: Organization name
+
+    Raises:
+        HTTPError: If repository deletion fails
+    """
+    config = get_config()
+    api_base = f"{config.gitea_api_url}/api/v1"
+    url = f"{api_base}/repos/{org}/{name}"
+
+    # Check if repository exists
+    if not curl_exists(url, config.gitea_admin_user, config.gitea_admin_password):
+        print(f"Repository '{name}' does not exist under org '{org}'; skipping deletion.")
+        return
+
+    print(f"Deleting repository '{name}' from org '{org}'...")
+
+    try:
+        response = requests.delete(
+            url,
+            auth=HTTPBasicAuth(config.gitea_admin_user, config.gitea_admin_password),
+            timeout=30,
+        )
+
+        if response.status_code == 204:
+            print(f"✅ Repository '{name}' deleted successfully")
+        elif response.status_code == 404:
+            print(f"Repository '{name}' not found (already deleted?)")
+        else:
+            raise HTTPError(f"Failed to delete repository: HTTP {response.status_code}\n{response.text}")
+    except requests.exceptions.RequestException as e:
+        raise HTTPError(f"Failed to delete repository: {e}") from e
+
+
+
+def patch_repo(name: str, org: str, payload: dict) -> None:
+    """
+    Patch repository settings (e.g., default_delete_branch_after_merge).
+
+    Args:
+        name: Repository name
+        org: Organization name
+        payload: Dictionary of patch settings
 
     Raises:
         HTTPError: If operation fails
@@ -394,11 +607,7 @@ def enable_auto_delete_branch(name: str, org: str) -> None:
     config = get_config()
     url = f"{config.gitea_api_url}/api/v1/repos/{org}/{name}"
 
-    payload = {
-        "default_delete_branch_after_merge": True
-    }
-
-    print(f"Enabling auto-delete branch for '{name}'...")
+    print(f"Patching repo '{name}' with: {payload}")
 
     try:
         response = requests.patch(
@@ -410,18 +619,19 @@ def enable_auto_delete_branch(name: str, org: str) -> None:
         )
 
         if response.status_code == 200:
-            print(f"Auto-delete branch enabled for '{name}'.")
+            print(f"Repo '{name}' patched successfully.")
         else:
             print(f"Response: {response.text}")
-            raise HTTPError(f"Failed to update repository: HTTP {response.status_code}\n{response.text}")
+            raise HTTPError(f"Failed to patch repository: HTTP {response.status_code}\n{response.text}")
     except requests.exceptions.RequestException as e:
-        raise HTTPError(f"Failed to update repository: {e}") from e
+        raise HTTPError(f"Failed to patch repository: {e}") from e
 
 
 def setup_branch_protection(
-    name: str, 
-    org: str, 
-    team: str = "",
+    name: str,
+    org: str,
+    teams: list,
+    branch: str = "main",
     jenkins_folder: str = "",
     enable_status_check: bool = False,
 ) -> None:
@@ -431,7 +641,7 @@ def setup_branch_protection(
     Args:
         name: Repository name
         org: Organization name
-        team: Optional team name for protection rules
+        teams: List of team names for protection rules (required)
         jenkins_folder: Jenkins folder name (e.g., 'acme-folder'). If not provided, defaults to '{org}-folder'
         enable_status_check: Enable Jenkins status check requirement (will construct context as '{jenkins_folder}/{name}/pipeline/head')
 
@@ -448,8 +658,8 @@ def setup_branch_protection(
         try:
             protections = json.loads(response)
             for protection in protections:
-                if protection.get("rule_name") == "main":
-                    print(f"Branch protection for '{name}' already exists under org '{org}'.")
+                if protection.get("rule_name") == branch:
+                    print(f"Branch protection for '{branch}' already exists under repo '{name}' in org '{org}'.")
                     return
         except json.JSONDecodeError:
             pass
@@ -458,32 +668,66 @@ def setup_branch_protection(
     template_path = config.get_template_path("gitea/branch-protection.json")
     with open(template_path) as f:
         content = f.read()
-    
+
     # Load as JSON to manipulate status_check_contexts
     protection_data = json.loads(content)
-    
-    # Replace template variables
+
+    # Verify teams exist under org
+    api_base = f"{config.gitea_api_url}/api/v1"
+    creds = (config.gitea_admin_user, config.gitea_admin_password)
+    valid_teams = []
+    for team in teams:
+        search_endpoint = f"{api_base}/orgs/{org}/teams/search"
+        response = requests.get(
+            search_endpoint,
+            auth=HTTPBasicAuth(*creds),
+            params={"q": team, "page": 1, "limit": 1},
+            headers={"Accept": "application/json"},
+            timeout=30,
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("data") and any(t["name"] == team for t in data["data"]):
+                valid_teams.append(team)
+            else:
+                print(f"Warning: Team '{team}' not found in org '{org}', skipping.")
+        else:
+            print(f"Warning: Could not verify team '{team}' (HTTP {response.status_code}), skipping.")
+
+    if not valid_teams:
+        raise HTTPError(f"No valid teams found in org '{org}'. Aborting branch protection setup.")
+
+    # Replace all relevant arrays in payload
+    for arr in [
+        "approvals_whitelist_teams",
+        "merge_whitelist_teams",
+        "push_whitelist_teams",
+        "whitelist_teams"
+    ]:
+        if arr in protection_data:
+            protection_data[arr] = valid_teams
+
     protection_str = json.dumps(protection_data)
     template = Template(protection_str)
-    payload_str = template.substitute(
-        TEAM=team,
-        GITEA_ADMIN_USER=config.gitea_admin_user,
-    )
-    
+    payload_str = template.substitute(GITEA_ADMIN_USER=config.gitea_admin_user)
+
     # Parse and update status check contexts if enabled
     payload_data = json.loads(payload_str)
     if enable_status_check:
-        # Auto-construct the status check context
         folder = jenkins_folder if jenkins_folder else f"{org}-folder"
         status_check_context = f"{folder}/{name}/pipeline/head"
         payload_data["status_check_contexts"] = [status_check_context]
-    
-    payload_str = json.dumps(payload_data)
 
-    print(f"Setting branch protection rules on 'main' branch of '{name}'...")
+    print(f"Setting branch protection rules on '{branch}' branch of '{name}'...")
     if enable_status_check:
         folder = jenkins_folder if jenkins_folder else f"{org}-folder"
         print(f"  - Requiring status check: {folder}/{name}/pipeline/head")
+
+    # Update the rule_name in the payload to match the branch
+    payload_data["rule_name"] = branch
+    # Ensure repo name is included in the payload for correct association
+    payload_data["repo_name"] = name
+    payload_str = json.dumps(payload_data)
 
     status_code, response = curl_post(
         url,
@@ -520,7 +764,7 @@ def clone_repo(
     """
     config = get_config()
     clone_url = f"http://{username}:{password}@localhost:{config.gitea_port}/{org}/{name}.git"
-    target_dir = Path(dest) / name
+    target_dir = Path(dest)  # Clone directly to the specified directory
 
     # Ensure target is not in a repo
     ensure_not_child_of_repo(str(target_dir))
@@ -554,7 +798,7 @@ def clone_repo(
 
     # Clone repository
     print(f"Cloning {org}/{name} -> {target_dir}...")
-    Path(dest).mkdir(parents=True, exist_ok=True)
+    target_dir.parent.mkdir(parents=True, exist_ok=True)  # Create parent directory if it doesn't exist
 
     try:
         run_command(["git", "clone", clone_url, str(target_dir)])
@@ -618,15 +862,15 @@ def clone_repo(
         print(f"Repository configured to use username '{username}' locally.")
 
 
-def setup_default_webhook() -> None:
+def setup_dt_git_webhook() -> None:
     """
-    Setup default webhook for Jenkins integration.
+    Setup dt git webhook for integration (global admin scope).
 
     Raises:
         HTTPError: If operation fails
     """
     config = get_config()
-    url = f"{config.gitea_api_url}/api/v1/admin/hooks"
+    url = f"{config.gitea_api_url}/api/v1/admin/hooks?type=default"
 
     payload = {
         "type": "gitea",
@@ -634,22 +878,28 @@ def setup_default_webhook() -> None:
             "url": "http://jenkins:8080/gitea-webhook/post",
             "content_type": "json",
         },
-        "events": ["push", "pull_request"],
+        "events": ["delete", "release", "repository", "status", "create", "pull_request", "pull_request_sync", "push"],
         "active": True,
     }
 
-    # Check if webhook already exists
+    # Get all global webhooks
     status_code, response = curl_get(
-        f"{url}?type=default",
+        url,
         config.gitea_admin_user,
         config.gitea_admin_password,
     )
 
-    if status_code == 200 and "http://jenkins:8080/gitea-webhook/post" in response:
-        print("Default webhook already present; skipping creation.")
-        return
+    if status_code == 200:
+        try:
+            hooks = json.loads(response)
+            for hook in hooks:
+                if hook.get("config", {}).get("url") == "http://jenkins:8080/gitea-webhook/post":
+                    print("dt git webhook already present; skipping creation.")
+                    return
+        except Exception:
+            pass
 
-    print("Default webhook not found; creating...")
+    print("dt git webhook not found; creating...")
     status_code, response = curl_post(
         url,
         json.dumps(payload),
@@ -658,6 +908,65 @@ def setup_default_webhook() -> None:
     )
 
     if status_code == 201:
-        print("Default webhook created successfully.")
+        print("dt git webhook created successfully.")
     else:
-        raise HTTPError(f"Failed to create webhook: HTTP {status_code}\n{response}")
+        raise HTTPError(f"Failed to create dt git webhook: HTTP {status_code}\n{response}")
+
+def remove_dt_git_webhook() -> None:
+    """
+    Remove dt git webhook for integration (global admin scope).
+
+    Raises:
+        HTTPError: If operation fails
+    """
+    config = get_config()
+    url = f"{config.gitea_api_url}/api/v1/admin/hooks?type=default"
+
+    # Get all global webhooks
+    status_code, response = curl_get(
+        url,
+        config.gitea_admin_user,
+        config.gitea_admin_password,
+    )
+
+    if status_code != 200:
+        raise HTTPError(f"Failed to fetch webhooks: HTTP {status_code}\n{response}")
+
+    try:
+        hooks = json.loads(response)
+    except Exception:
+        raise HTTPError("Failed to parse webhook list response.")
+
+    # Print all webhook URLs for debugging
+    print("Existing global webhooks:")
+    for hook in hooks:
+        url_val = hook.get("config", {}).get("url")
+        print(f"- id={hook.get('id')} url={url_val}")
+
+    # Find dt git webhook by URL
+    hook_id = None
+    for hook in hooks:
+        if hook.get("config", {}).get("url") == "http://jenkins:8080/gitea-webhook/post":
+            hook_id = hook.get("id")
+            break
+
+    if not hook_id:
+        print("dt git webhook already removed (not found).")
+        return
+
+    # Delete webhook using requests.delete (no ?type=default)
+    delete_url = f"{config.gitea_api_url}/api/v1/admin/hooks/{hook_id}"
+    try:
+        response = requests.delete(
+            delete_url,
+            auth=HTTPBasicAuth(config.gitea_admin_user, config.gitea_admin_password),
+            timeout=30,
+        )
+        if response.status_code == 204:
+            print("dt git webhook removed successfully.")
+        elif response.status_code == 404:
+            print("dt git webhook not found (already deleted?)")
+        else:
+            raise HTTPError(f"Failed to remove dt git webhook: HTTP {response.status_code}\n{response.text}")
+    except requests.exceptions.RequestException as e:
+        raise HTTPError(f"Failed to remove dt git webhook: {e}") from e

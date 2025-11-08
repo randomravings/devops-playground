@@ -15,6 +15,7 @@
 
 set -e  # Exit on error
 
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORG_NAME="acme"
 ORG_NAME_UPPER=$(echo "${ORG_NAME}" | tr '[:lower:]' '[:upper:]')
 
@@ -35,70 +36,52 @@ echo ""
 echo "1. Setting up Docker environment..."
 dt env up
 
-# 2. Create Acme organization explicitly
+# 2. Create Jenkins organization folder
 echo ""
-echo "2. Creating '$ORG_NAME' organization..."
-dt git org "$ORG_NAME" --owner admin --description "Acme Corporation"
+echo "2. Creating Jenkins organization folder for '$ORG_NAME'..."
+dt ci org new "${ORG_NAME}"
 
-# 3. Create users
+# 3. Create Acme organization explicitly
 echo ""
-echo "3. Creating users..."
-dt git user john --password secret --org "$ORG_NAME"
-dt git user jane --password secret --org "$ORG_NAME"
+echo "3. Creating '$ORG_NAME' organization..."
+dt git org new "$ORG_NAME" -d "Acme Corporation"
 
-# 4. Create developers team
+# 4. Create users
 echo ""
-echo "4. Creating 'developers' team..."
-dt git team developers --org "$ORG_NAME" --permission write
+echo "4. Creating users..."
+dt git user new john -o "$ORG_NAME"
+dt git user new jane -o "$ORG_NAME"
 
-# 5. Add team members
+# 5. Create developers team
 echo ""
-echo "5. Adding team members..."
-dt git add-member developers --org "$ORG_NAME" --username john
-dt git add-member developers --org "$ORG_NAME" --username jane
+echo "5. Creating 'developers' team..."
+dt git team new developers -o "$ORG_NAME" -m write
 
-# 6. Create repositories
+# 6. Add team members
 echo ""
-echo "6. Creating repositories..."
-dt git repo dbci-tools --org "$ORG_NAME" --description "Database CI tools"
-dt git repo etl-framework --org "$ORG_NAME" --description "ETL Framework tools"
-dt git repo demo-dw --org "$ORG_NAME" --description "Demo database"
-dt git repo demo-etl --org "$ORG_NAME" --description "Demo ETL application"
+echo "6. Adding team members..."
+dt git member new john -o acme -t developers
+dt git member new jane -o acme -t developers
 
-# 7. Setup branch protection
+# 7. Create repositories
 echo ""
-echo "7. Setting up branch protection with status checks..."
-dt git protect demo-dw --org "$ORG_NAME" --team developers --enable-status-check
-dt git protect demo-etl --org "$ORG_NAME" --team developers --enable-status-check
+echo "7. Creating repositories..."
+dt git repo new dbci-tools -o "$ORG_NAME" -d "Database CI tools"
+dt git repo new etl-framework -o "$ORG_NAME" -d "ETL Framework tools"
+dt git repo new demo-dw -o "$ORG_NAME" -d "Demo database"
+dt git repo new demo-etl -o "$ORG_NAME" -d "Demo ETL application"
 
-# 7b. Enable auto-delete branches after merge
+# 8. Setup branch protection
 echo ""
-echo "7b. Enabling auto-delete branches after merge..."
-dt git auto-delete-branch dbci-tools --org "$ORG_NAME"
-dt git auto-delete-branch etl-framework --org "$ORG_NAME"
-dt git auto-delete-branch demo-dw --org "$ORG_NAME"
-dt git auto-delete-branch demo-etl --org "$ORG_NAME"
+echo "8. Setting up branch protection with status checks..."
+dt git repo protect new demo-dw -o "$ORG_NAME" -t developers --status-check
+dt git repo protect new demo-etl -o "$ORG_NAME" -t developers --status-check
 
-# 8. Setup Jenkins webhook
+# 9. Initialize dbci-tools repository
 echo ""
-echo "8. Setting up Jenkins webhook..."
-dt git webhook
-
-# 9. Create Jenkins credentials
-echo ""
-echo "9. Creating Jenkins credentials..."
-dt ci creds gitea-credentials --username admin --password secret --description "Gitea admin credentials for Jenkins"
-
-# 10. Create Jenkins organization folder
-echo ""
-echo "10. Creating Jenkins organization folder for '$ORG_NAME'..."
-dt ci org "${ORG_NAME}-folder" --org "$ORG_NAME" --credentials gitea-credentials --description "Jenkins org folder for $ORG_NAME repos"
-
-# 11. Initialize dbci-tools repository
-echo ""
-echo "11. Initializing dbci-tools repository..."
-dt git init dbci-tools --org "$ORG_NAME" --template dbci-tools
-dt git init etl-framework --org "$ORG_NAME" --template etl-framework
+echo "9. Initializing dbci-tools repository..."
+dt git repo init dbci-tools -o "$ORG_NAME" -d "$DIR/../projects/dbci-tools"
+dt git repo init etl-framework -o "$ORG_NAME" -d "$DIR/../projects/etl-framework"
 
 echo ""
 echo "============================================================"
