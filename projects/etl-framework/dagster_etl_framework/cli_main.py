@@ -68,7 +68,7 @@ def install_framework():
     print("[install] ✅ Installation complete")
 
 
-def setup_project(project_root: pathlib.Path, warehouse: str = "csv"):
+def setup_project(project_root: pathlib.Path, warehouse: str = "sqlite"):
     """Setup ETL project environment"""
     print(f"Setting up ETL project at {project_root}...")
     
@@ -297,7 +297,7 @@ Examples:
   # Install ETL framework environment
   etl INSTALL
   
-  # Setup with default CSV warehouse
+  # Setup with default SQLite warehouse
   etl SETUP /path/to/demo-etl
   
   # Setup with Postgres warehouse
@@ -320,41 +320,53 @@ Examples:
     parser.add_argument(
         "operation",
         choices=["INSTALL", "SETUP", "RUN", "TEST", "VALIDATE", "UI"],
-        help="Operation to perform"
+        metavar="OPERATION",
+        help="""Operation to perform:
+  INSTALL  - Install ETL framework environment (.venv and dependencies)
+  SETUP    - Setup project environment (creates .venv, installs project deps)
+  RUN      - Run ETL pipeline for specific date partition
+  TEST     - Run project tests using pytest
+  VALIDATE - Validate source_model.yaml against database schema (HCL file)
+  UI       - Launch Dagster web UI for project"""
     )
     
     parser.add_argument(
         "project_root",
         type=pathlib.Path,
         nargs="?",
-        help="Path to the ETL project root directory (not used for INSTALL)"
+        metavar="PROJECT_PATH",
+        help="Path to ETL project root directory (not required for INSTALL)"
     )
     
     parser.add_argument(
         "hcl_file",
         type=pathlib.Path,
         nargs="?",
-        help="Path to HCL schema file (required for VALIDATE)"
+        metavar="HCL_FILE",
+        help="Path to database schema HCL file (required only for VALIDATE)"
     )
     
     # Operation-specific arguments
     parser.add_argument(
         "-w", "--warehouse",
-        default="csv",
-        choices=["csv", "postgres"],
-        help="Warehouse type for SETUP (default: csv)"
+        default="sqlite",
+        choices=["sqlite", "postgres"],
+        metavar="TYPE",
+        help="Warehouse database type for SETUP operation (choices: sqlite, postgres; default: sqlite)"
     )
     
     parser.add_argument(
         "-d", "--date",
-        help="Date in YYYY-MM-DD format for RUN operation"
+        metavar="YYYY-MM-DD",
+        help="Date in YYYY-MM-DD format for RUN operation (e.g., 2024-02-01)"
     )
     
     parser.add_argument(
         "-p", "--port",
         type=int,
         default=3001,
-        help="Port for UI operation (default: 3001)"
+        metavar="PORT",
+        help="Port number for UI operation (default: 3001)"
     )
     
     args = parser.parse_args()

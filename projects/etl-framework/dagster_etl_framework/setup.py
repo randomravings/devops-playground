@@ -163,7 +163,7 @@ class SetupManager:
         Set up environment configuration from template.
         
         Args:
-            warehouse_type: Type of warehouse ('csv' or 'postgres')
+            warehouse_type: Type of warehouse ('sqlite' or 'postgres')
             
         Returns:
             True if successful, False otherwise
@@ -234,11 +234,9 @@ class SetupManager:
             return False
         
         # Validate based on warehouse type
-        if warehouse_type == "csv":
-            if "WAREHOUSE_PATH" not in env_vars:
-                print("✗ Error: WAREHOUSE_PATH not set in .env")
-                return False
-            print(f"  Using CSV warehouse: {env_vars['WAREHOUSE_PATH']}")
+        if warehouse_type == "sqlite":
+            sqlite_path = env_vars.get("SQLITE_DB_PATH", ".data/warehouse.db")
+            print(f"  Using SQLite warehouse: {sqlite_path}")
             
         elif warehouse_type == "postgres":
             required = ["POSTGRES_HOST", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"]
@@ -511,15 +509,16 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example:
-  ./run.sh setup --project-dir ../demo-etl --warehouse csv
+  ./run.sh setup --project-dir ../demo-etl --warehouse sqlite
+  ./run.sh setup --project-dir ../demo-etl --warehouse postgres
         """
     )
     
     parser.add_argument(
         "--warehouse",
-        required=True,
-        choices=["csv", "postgres"],
-        help="csv or postgres"
+        default="sqlite",
+        choices=["sqlite", "postgres"],
+        help="Warehouse type: sqlite (default) or postgres"
     )
     parser.add_argument(
         "--framework-path",

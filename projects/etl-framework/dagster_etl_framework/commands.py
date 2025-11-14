@@ -92,11 +92,6 @@ Example:
         help="Date YYYY-MM-DD"
     )
     parser.add_argument(
-        "-o", "--output-dir",
-        default=".data/warehouse",
-        help="Output directory (default: .data/warehouse)"
-    )
-    parser.add_argument(
         "-p", "--project-dir",
         default=".",
         help="Project directory (default: .)"
@@ -121,11 +116,11 @@ Example:
         print("")
         print("The pipeline requires warehouse configuration to run.")
         print("Please run setup first:")
-        print(f"  etl-framework setup --project-dir {parsed_args.project_dir} --warehouse csv")
+        print(f"  etl-framework setup --project-dir {parsed_args.project_dir} --warehouse sqlite")
         print("")
         print("Or set environment variables manually:")
-        print("  export WAREHOUSE_TYPE=csv")
-        print("  export WAREHOUSE_PATH=.data/warehouse")
+        print("  export WAREHOUSE_TYPE=sqlite")
+        print("  export SQLITE_DB_PATH=.data/warehouse.db")
         return 1
     
     # Find venv
@@ -178,7 +173,6 @@ from dagster_etl_framework import run_partition, create_resources
 
 # Set environment variables
 os.environ["SOURCE_DATA_PATH"] = '{parsed_args.input_dir}'
-os.environ["WAREHOUSE_PATH"] = '{parsed_args.output_dir}'
 
 # Create resources and run
 resources = create_resources(
@@ -195,7 +189,6 @@ sys.exit(exit_code)
     print(f"Running ETL pipeline for date: {parsed_args.date}")
     print("=" * 60)
     print(f"Input:  {parsed_args.input_dir}")
-    print(f"Output: {parsed_args.output_dir}")
     print("")
     
     try:

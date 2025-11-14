@@ -11,7 +11,7 @@ def setup_environment(project_dir: str, framework_path: str, warehouse_type: str
     Args:
         project_dir: Path to the project directory
         framework_path: Path to the framework
-        warehouse_type: Type of warehouse (csv or postgres)
+        warehouse_type: Type of warehouse (sqlite or postgres)
         start_ui: Whether to start the UI (not used in standalone)
     """
     import sys

@@ -11,6 +11,18 @@ from pathlib import Path
 from typing import List, Optional
 import dagster as dg
 from dagster import materialize, AssetsDefinition
+from dotenv import load_dotenv
+
+
+def load_project_env(project_dir: str = "."):
+    """Load .env file from project directory if it exists."""
+    env_file = Path(project_dir) / ".env"
+    if env_file.exists():
+        print(f"→ Loading environment from: {env_file.resolve()}")
+        load_dotenv(env_file)
+        print(f"✓ Loaded .env file")
+    else:
+        print(f"→ No .env file found at: {env_file.resolve()}")
 
 
 def run_partition(
@@ -138,6 +150,11 @@ Examples:
         help="Output warehouse directory (default: .data/warehouse)"
     )
     parser.add_argument(
+        "-p", "--project-dir",
+        default=".",
+        help="Project directory containing .env file (default: .)"
+    )
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         default=True,
@@ -182,6 +199,9 @@ def run_partition_cli(
     parser = create_partition_cli(assets, description, default_source_path)
     args = parser.parse_args()
     
+    # Load .env from project directory first
+    load_project_env(args.project_dir)
+    
     # Validate input directory
     input_path = Path(args.input_dir)
     if not input_path.exists():
@@ -200,9 +220,30 @@ def run_partition_cli(
     
     # Set environment variables for resource configuration
     import os
+    
+    # Always set SOURCE_DATA_PATH from CLI argument
     os.environ["SOURCE_DATA_PATH"] = args.input_dir
-    os.environ["WAREHOUSE_TYPE"] = os.getenv("WAREHOUSE_TYPE", "csv")
-    os.environ["WAREHOUSE_PATH"] = args.output_dir
+    
+    # Debug: Show current configuration from .env
+    current_warehouse_type = os.environ.get("WAREHOUSE_TYPE")
+    current_sqlite_path = os.environ.get("SQLITE_DB_PATH")
+    
+    if verbose:
+        print(f"→ WAREHOUSE_TYPE from .env: {current_warehouse_type or '(not set)'}")
+        print(f"→ SQLITE_DB_PATH from .env: {current_sqlite_path or '(not set)'}")
+    
+    # If not set in .env, use CLI defaults
+    if not current_warehouse_type:
+        os.environ["WAREHOUSE_TYPE"] = "sqlite"
+        if verbose:
+            print(f"→ Setting WAREHOUSE_TYPE=sqlite (CLI default)")
+    
+    if not current_sqlite_path and os.environ.get("WAREHOUSE_TYPE") == "sqlite":
+        os.environ["SQLITE_DB_PATH"] = args.output_dir
+        if verbose:
+            print(f"→ Setting SQLITE_DB_PATH from CLI --output-dir: {args.output_dir}")
+    elif current_sqlite_path and verbose:
+        print(f"→ Using SQLITE_DB_PATH from .env: {current_sqlite_path}")
     
     # Import here to use updated environment
     from dagster_etl_framework import create_resources
@@ -215,15 +256,17 @@ def run_partition_cli(
     exit_code = run_partition(assets, args.date, resources, verbose=verbose)
     
     if verbose and exit_code == 0:
-        # List warehouse files
-        output_path = Path(args.output_dir)
-        if output_path.exists():
-            print(f"\nWarehouse files in {args.output_dir}:")
-            csv_files = sorted(output_path.glob("*.csv"))
-            if csv_files:
-                for csv_file in csv_files:
-                    print(f"  - {csv_file.name}")
-            else:
-                print("  (no CSV files found)")
+        # Show warehouse info based on type
+        warehouse_type = os.getenv("WAREHOUSE_TYPE")
+        
+        if warehouse_type == "sqlite":
+            db_path = os.getenv("SQLITE_DB_PATH")
+            print(f"\nSQLite database: {db_path}")
+            db_file = Path(db_path)
+            if db_file.exists():
+                size_mb = db_file.stat().st_size / (1024 * 1024)
+                print(f"  Size: {size_mb:.2f} MB")
+        elif warehouse_type == "postgres":
+            print(f"\nData written to PostgreSQL database")
     
     return exit_code

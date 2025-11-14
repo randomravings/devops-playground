@@ -76,7 +76,7 @@ class ModelValidator:
     
     # System columns that are auto-generated and not in source model
     SYSTEM_COLUMNS = {
-        'dim_customer_sk', 'dim_product_sk', 'dim_date_id',  # Surrogate keys
+        'dim_customer_sk', 'dim_product_sk', 'dim_date_sk',  # Surrogate keys
         'version', 'effective_from', 'effective_to', 'is_current',  # SCD fields
         'created_at', 'updated_at'  # Audit fields
     }

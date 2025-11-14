@@ -46,9 +46,10 @@ def add_hash_column(
     hash_field_name: str
 ) -> pd.DataFrame:
     """Add a hash column for change detection."""
-    hash_value = 0
+    hash_value = "0"
     if columns:
-        hash_value = pd.util.hash_pandas_object(df[columns], index=False)
+        # Generate hash as string to work with both SQLite and PostgreSQL VARCHAR columns
+        hash_value = pd.util.hash_pandas_object(df[columns], index=False).astype(str)
     df.insert(loc, hash_field_name, hash_value)
     return df
 
@@ -87,13 +88,19 @@ def prepare_dim_dataframe(
     
     # Don't set index here - keep keys as regular columns
     # Add SCD metadata columns as regular columns with dimension-specific name
-    dim_key_name = f"dim_{dimension_name}_id"
+    dim_key_name = f"dim_{dimension_name}_sk"
     df.insert(0, dim_key_name, -1)
     add_hash_column(df, 1, t1_fields, "t1_hash")
     add_hash_column(df, 2, t2_fields, "t2_hash")
-    df.insert(3, "valid_from", pd.NA)
-    df.insert(4, "valid_to", pd.NA)
+    df.insert(3, "effective_from", None)
+    df.insert(4, "effective_to", None)
     df.insert(5, "is_current", True)
+    
+    # Add audit columns (extract_date should already exist from source, created_at and updated_at will be set during processing)
+    if 'created_at' not in df.columns:
+        df['created_at'] = None
+    if 'updated_at' not in df.columns:
+        df['updated_at'] = None
     
     # Store metadata for SCD processing
     df.attrs['keys'] = keys
@@ -107,40 +114,68 @@ def prepare_dim_dataframe(
 def process_scd_type2(
     context: AssetExecutionContext,
     new_records: pd.DataFrame,
-    warehouse_path: Path,
-    dim_file_name: str,
+    warehouse_io_manager,
+    table_name: str,
     load_date: pd.Timestamp,
 ) -> pd.DataFrame:
     """
     Generic SCD Type 2 processor for dimension tables.
     
+    Uses UPDATE for T1 changes and T2 record closures, INSERT for new records and T2 new versions.
+    
     Args:
         context: Asset execution context for logging
         new_records: DataFrame with new records (must have business keys in attrs['keys'])
-        warehouse_path: Path to warehouse directory
-        dim_file_name: Name of the dimension CSV file (e.g., "dim_customers.csv")
+        warehouse_io_manager: IO manager for reading existing dimension data
+        table_name: Name of the dimension table (e.g., "dim_customer")
         load_date: Date of the current load
         
     Returns:
-        DataFrame with SCD Type 2 processing applied
+        DataFrame with SCD Type 2 processing applied and operations metadata
     """
     # Get business keys and dimension key name from metadata
     business_keys = new_records.attrs.get('keys', [])
-    dim_key_name = new_records.attrs.get('dim_key_name', 'dim_id')
-    dim_file = warehouse_path / dim_file_name
+    dim_key_name = new_records.attrs.get('dim_key_name', 'dim_sk')
     
-    if dim_file.exists():
-        # Load existing dimension
-        existing = pd.read_csv(dim_file)
-        context.log.info(f"Loaded existing dimension with {len(existing)} rows")
+    # table_name already includes schema prefix (e.g., "t_dim_customer")
+    # Format it for SQL (add quotes for databases that need them)
+    formatted_table_name = warehouse_io_manager._format_table_name(table_name)
+    
+    # Try to load existing dimension from database (current records only for comparison)
+    try:
+        with warehouse_io_manager._get_connection() as conn:
+            # Load only current records for SCD comparison
+            existing = pd.read_sql(
+                f"SELECT * FROM {formatted_table_name} WHERE is_current = TRUE", 
+                conn
+            )
+        context.log.info(f"Loaded {len(existing)} current dimension records")
         
-        # Get next dimension key ID
-        next_dim_id = existing[dim_key_name].max() + 1
+        # Get next dimension key ID - check all records, not just current
+        with warehouse_io_manager._get_connection() as conn:
+            max_sk_result = pd.read_sql(
+                f"SELECT MAX({dim_key_name}) as max_sk FROM {formatted_table_name}",
+                conn
+            )
+        max_sk = max_sk_result['max_sk'].iloc[0]
+        next_dim_id = int(max_sk) + 1 if pd.notna(max_sk) else 1
+        context.log.info(f"Current MAX({dim_key_name}) = {max_sk}, next_dim_id will start at {next_dim_id}")
         
-        # Process each new record
+        # Track operations per row
         result_records = []
+        operations = {}
+        
+        # Debug: Log business keys being used
+        context.log.info(f"Business keys for matching: {business_keys}")
+        context.log.info(f"Number of existing current records: {len(existing)}")
+        if len(existing) > 0:
+            context.log.info(f"Existing business key values: {existing[business_keys].values.tolist()}")
         
         for _, new_row in new_records.iterrows():
+            # Debug: Log the new record's business key
+            new_bk_values = [new_row[k] for k in business_keys]
+            context.log.debug(f"Processing record with business key: {new_bk_values}")
+            
             # Find matching records by business key
             mask = pd.Series([True] * len(existing))
             for key in business_keys:
@@ -148,73 +183,176 @@ def process_scd_type2(
             
             matching = existing[mask]
             
+            context.log.debug(f"Found {len(matching)} matching records for business key: {new_bk_values}")
+            
             if len(matching) == 0:
-                # New business key - insert new record
+                # New business key - INSERT new record
+                new_row = new_row.copy()
                 new_row[dim_key_name] = next_dim_id
-                new_row['valid_from'] = load_date.strftime('%Y-%m-%d')
-                new_row['valid_to'] = '2999-12-31'
-                new_row['is_current'] = True
+                new_row['effective_from'] = load_date.strftime('%Y-%m-%d')
+                new_row['effective_to'] = '2999-12-31'
+                new_row['is_current'] = 1  # Use integer 1 instead of True for consistency
+                new_row['created_at'] = pd.Timestamp.now()
+                new_row['updated_at'] = pd.Timestamp.now()
+                
+                idx = len(result_records)
                 result_records.append(new_row)
+                operations[idx] = "INSERT"
+                context.log.info(f"New business key: {[new_row[k] for k in business_keys]} -> INSERT with SK={next_dim_id}")
                 next_dim_id += 1
-                context.log.info(f"New business key: {[new_row[k] for k in business_keys]}")
+                
             else:
                 # Get current record
-                current = matching[matching['is_current'] == True].iloc[0]
+                current = matching.iloc[0].copy()
                 
                 # Check for changes
                 t1_changed = current['t1_hash'] != new_row['t1_hash']
                 t2_changed = current['t2_hash'] != new_row['t2_hash']
                 
+                # Debug: Log hash comparison
+                context.log.info(f"Hash comparison for {[new_row[k] for k in business_keys]}: "
+                                f"T1 current={current['t1_hash']} new={new_row['t1_hash']} changed={t1_changed}, "
+                                f"T2 current={current['t2_hash']} new={new_row['t2_hash']} changed={t2_changed}")
+                
                 if t2_changed:
-                    # T2 change: Close old record and insert new
-                    current['valid_to'] = (load_date - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
-                    current['is_current'] = False
-                    result_records.append(current)
+                    # T2 change: Close old record (UPDATE) and insert new version (INSERT)
+                    # Step 1: UPDATE to close the current record
+                    current['effective_to'] = (load_date - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+                    current['is_current'] = 0  # Use integer 0 instead of False for consistency
+                    current['updated_at'] = pd.Timestamp.now()
                     
-                    new_row[dim_key_name] = next_dim_id
-                    new_row['valid_from'] = load_date.strftime('%Y-%m-%d')
-                    new_row['valid_to'] = '2999-12-31'
-                    new_row['is_current'] = True
-                    result_records.append(new_row)
+                    idx = len(result_records)
+                    result_records.append(current)
+                    operations[idx] = "UPDATE"
+                    context.log.info(f"T2 change for key: {[new_row[k] for k in business_keys]} -> UPDATE SK={current[dim_key_name]} to close")
+                    
+                    # Step 2: INSERT new version with new SK
+                    new_version = new_row.copy()
+                    new_version[dim_key_name] = next_dim_id
+                    new_version['effective_from'] = load_date.strftime('%Y-%m-%d')
+                    new_version['effective_to'] = '2999-12-31'
+                    new_version['is_current'] = 1  # Use integer 1 instead of True for consistency
+                    new_version['created_at'] = pd.Timestamp.now()
+                    new_version['updated_at'] = pd.Timestamp.now()
+                    
+                    idx = len(result_records)
+                    result_records.append(new_version)
+                    operations[idx] = "INSERT"
+                    context.log.info(f"T2 change for key: {[new_row[k] for k in business_keys]} -> INSERT new version with SK={next_dim_id}")
                     next_dim_id += 1
-                    context.log.info(f"T2 change for key: {[new_row[k] for k in business_keys]}")
+                    
                 elif t1_changed:
-                    # T1 change: Update existing record in place
-                    current['t1_hash'] = new_row['t1_hash']
-                    # Update T1 columns (non-descriptive attributes)
-                    for col in new_row.index:
-                        if col not in [dim_key_name, 'valid_from', 'valid_to', 'is_current', 't1_hash', 't2_hash'] + business_keys:
-                            current[col] = new_row[col]
-                    result_records.append(current)
-                    context.log.info(f"T1 change for key: {[new_row[k] for k in business_keys]}")
+                    # T1 change: UPDATE ALL records for this business key (not just current)
+                    # T1 attributes should be consistent across all versions
+                    
+                    # Load ALL records for this business key from the database
+                    with warehouse_io_manager._get_connection() as conn:
+                        # Build WHERE clause with proper quoting for column names
+                        quote = warehouse_io_manager._get_quote_char()
+                        placeholder = warehouse_io_manager._get_placeholder()
+                        where_conditions = " AND ".join([f'{quote}{k}{quote} = {placeholder}' for k in business_keys])
+                        business_key_values = [new_row[k] for k in business_keys]
+                        
+                        query = f"SELECT * FROM {formatted_table_name} WHERE {where_conditions}"
+                        all_versions = pd.read_sql(query, conn, params=business_key_values)
+                    
+                    context.log.info(f"T1 change for business key {business_key_values}: updating {len(all_versions)} records")
+                    
+                    # Update T1 fields for ALL versions of this business key
+                    t1_fields = new_records.attrs.get('t1_fields', [])
+                    for _, record in all_versions.iterrows():
+                        record = record.copy()
+                        record['t1_hash'] = new_row['t1_hash']
+                        record['updated_at'] = pd.Timestamp.now()
+                        
+                        # NEVER update extract_date - it represents when the row was first inserted
+                        
+                        # Update T1 columns
+                        for col in t1_fields:
+                            if col in new_row.index:
+                                record[col] = new_row[col]
+                        
+                        idx = len(result_records)
+                        result_records.append(record)
+                        operations[idx] = "UPDATE"
+                        context.log.info(f"  -> UPDATE SK={record[dim_key_name]} for business key {business_key_values}")
                 else:
-                    # No change - keep existing record
-                    result_records.append(current)
+                    # No change - no operation needed (skip this record)
+                    context.log.debug(f"No change for key: {[new_row[k] for k in business_keys]}")
         
-        # Add all historical (non-current) records
-        historical = existing[existing['is_current'] == False]
-        for _, row in historical.iterrows():
-            result_records.append(row)
+        # If no operations needed, return empty dataframe
+        if len(result_records) == 0:
+            context.log.info("No changes detected - no operations needed")
+            # Return empty dataframe with same structure as new_records
+            empty_df = new_records.head(0).copy()
+            empty_df.attrs['operations'] = {}
+            empty_df.attrs['primary_key'] = [dim_key_name]
+            return empty_df
         
         # Build final dataframe
         df = pd.DataFrame(result_records)
         
-    else:
-        # First load - all records are new
-        context.log.info("First load - creating new dimension")
+        # Debug: Check is_current column after DataFrame creation
+        context.log.info(f"DEBUG: After DataFrame creation - is_current dtype={df['is_current'].dtype if 'is_current' in df.columns else 'N/A'}")
+        if 'is_current' in df.columns:
+            context.log.info(f"DEBUG: is_current values: {df['is_current'].tolist()}")
+        
+    except Exception as e:
+        # Table doesn't exist or other error - treat as first load
+        context.log.info(f"First load or table not found ({e}) - creating new dimension")
         df = new_records.copy()
         df[dim_key_name] = range(1, len(df) + 1)
-        df['valid_from'] = load_date.strftime('%Y-%m-%d')
-        df['valid_to'] = '2999-12-31'
-        df['is_current'] = True
+        df['effective_from'] = load_date.strftime('%Y-%m-%d')
+        df['effective_to'] = '2999-12-31'
+        df['is_current'] = 1  # Use integer 1 instead of True for consistency
+        current_time = pd.Timestamp.now()
+        df['created_at'] = current_time
+        df['updated_at'] = current_time
+        
+        # All records are INSERTs on first load
+        operations = {idx: "INSERT" for idx in range(len(df))}
     
-    # Reorder columns: dim_key, business_keys, valid_from, valid_to, is_current, t1_hash, t2_hash, remaining
-    scd_cols = [dim_key_name] + business_keys + ['valid_from', 'valid_to', 'is_current', 't1_hash', 't2_hash']
+    # Reorder columns: dim_key, business_keys, effective_from, effective_to, is_current, t1_hash, t2_hash, remaining
+    scd_cols = [dim_key_name] + business_keys + ['effective_from', 'effective_to', 'is_current', 't1_hash', 't2_hash']
     remaining_cols = [c for c in df.columns if c not in scd_cols]
     ordered_cols = scd_cols + remaining_cols
     
-    context.log.info(f"Final dimension has {len(df)} rows ({len(df[df['is_current'] == True])} current)")
-    return df[ordered_cols]
+    # Replace pandas NA types with None for database compatibility, but preserve boolean False values
+    # Convert column by column to avoid treating False as NA
+    for col in df.columns:
+        if df[col].dtype == 'bool':
+            # For boolean columns, only convert actual NA values to None, not False
+            df[col] = df[col].apply(lambda x: None if pd.isna(x) else x)
+        else:
+            # For other columns, use standard NA replacement
+            df[col] = df[col].where(pd.notna(df[col]), None)
+    
+    # Debug: Check is_current after NA replacement
+    if 'is_current' in df.columns:
+        context.log.info(f"DEBUG: After NA replacement - is_current values: {df['is_current'].tolist()}")
+    
+    # Reorder columns
+    df = df[ordered_cols]
+    
+    # CRITICAL: Reset index to ensure it matches operations dict keys (0, 1, 2, ...)
+    df = df.reset_index(drop=True)
+    
+    # Set metadata for IO manager
+    df.attrs['operations'] = operations
+    df.attrs['primary_key'] = [dim_key_name]
+    df.attrs['business_keys'] = business_keys  # For index creation on business keys
+    
+    context.log.info(f"SCD Type 2 result: {len(df)} operations "
+                    f"(inserts={sum(1 for op in operations.values() if op == 'INSERT')}, "
+                    f"updates={sum(1 for op in operations.values() if op == 'UPDATE')})")
+    
+    # Debug: Log operations and corresponding SK values
+    for idx in range(len(df)):
+        op = operations.get(idx, "INSERT")
+        sk_val = df.iloc[idx][dim_key_name]
+        context.log.info(f"Operation {idx}: {op} with {dim_key_name}={sk_val}")
+    
+    return df
 
 
 # === Source Model Utilities ===
@@ -405,6 +543,10 @@ def create_dimension_staging_asset(dimension_name: str, source_model: SourceMode
         for additional_df in dfs[1:]:
             df = denormalize(context, df, additional_df, source_model)
         
+        # Add extract_date from partition key
+        partition_date = pd.to_datetime(context.partition_key).date()
+        df['extract_date'] = partition_date
+        
         # Get dimension fields and prepare for SCD Type 2
         fields = get_dimension_fields(source_model, dimension_name, dfs)
         prepare_dim_dataframe(context, df, fields, dimension_name)
@@ -427,9 +569,8 @@ def create_scd_type2_dimension_asset(
         source_model: Source model configuration (for consistency, not used)
         daily_partitions: Partition definition
     """
-    # Add dim_ prefix for asset name and file name
+    # Add dim_ prefix for asset name
     asset_name = f"dim_{dimension_name}"
-    dim_file_name = f"dim_{dimension_name}.csv"
     staging_asset_key = f"stg_{dimension_name}"
     description = f"{dimension_name.replace('_', ' ').title()} dimension with SCD Type 2"
     
@@ -449,13 +590,15 @@ def create_scd_type2_dimension_asset(
         staging_data = kwargs[staging_asset_key]
         
         warehouse_io_manager = context.resources.warehouse_io_manager
-        warehouse_path = Path(warehouse_io_manager.base_path)
+        
+        # Get the table name with schema prefix (e.g., "t_dim_customer")
+        table_name = f"t_{asset_name}"
         
         return process_scd_type2(
             context=context,
             new_records=staging_data,
-            warehouse_path=warehouse_path,
-            dim_file_name=dim_file_name,
+            warehouse_io_manager=warehouse_io_manager,
+            table_name=table_name,
             load_date=load_date,
         )
     
@@ -548,14 +691,13 @@ def create_fact_table_asset(fact_name: str, source_model: SourceModel, daily_par
                     dimension_lookups.append({
                         'dimension': f"dim_{dim_name}",
                         'business_keys': relation.foreign_key,
-                        'surrogate_key': f"{dim_name}_dim_id",
+                        'surrogate_key': f"dim_{dim_name}_sk",
                         'lookup_strategy': 'current'
                     })
                     break
     
-    # Add date dimension - but NOT as a dependency or lookup!
-    # The date_dim_id is populated directly from the partition date
-    date_dim_id_column = 'date_dim_id'
+    # Date dimension is NOT added as a surrogate key lookup
+    # Facts use their natural date columns (e.g., order_date) which directly reference dim_date_sk
     
     # Create asset dependencies - EXCLUDE dim_date (no lookup needed)
     dimension_deps = [lookup['dimension'] for lookup in dimension_lookups]
@@ -577,11 +719,14 @@ def create_fact_table_asset(fact_name: str, source_model: SourceModel, daily_par
         
         fact_df = staging_df.copy()
         
-        # Add date_dim_id directly from partition date (no lookup needed)
+        # Date dimension: Map order_date to dim_date_sk
+        # Since date dimension uses date as surrogate key, dim_date_sk = order_date
+        if 'order_date' in fact_df.columns:
+            fact_df['dim_date_sk'] = pd.to_datetime(fact_df['order_date']).dt.date
+            context.log.info(f"Mapped order_date to dim_date_sk for {len(fact_df)} records")
+        
         partition_key = context.partition_key
         partition_date = datetime.datetime.strptime(partition_key, '%Y-%m-%d').date()
-        fact_df[date_dim_id_column] = partition_date
-        context.log.info(f"Populated {date_dim_id_column} with partition date: {partition_date}")
         
         # Perform dimension lookups for other dimensions
         for lookup in dimension_lookups:
@@ -593,8 +738,8 @@ def create_fact_table_asset(fact_name: str, source_model: SourceModel, daily_par
             dim_df = dim_dataframes[dim_name]
             
             # Get the dimension key column name from the dimension dataframe
-            # It should be named dim_<name>_id (e.g., dim_customers_id, dim_products_id)
-            dim_key_cols = [col for col in dim_df.columns if col.startswith('dim_') and col.endswith('_id')]
+            # It should be named dim_<name>_sk (e.g., dim_customers_sk, dim_products_sk)
+            dim_key_cols = [col for col in dim_df.columns if col.startswith('dim_') and col.endswith('_sk')]
             if not dim_key_cols:
                 raise ValueError(f"Could not find dimension key column in {dim_name}")
             dim_key_name = dim_key_cols[0]
@@ -629,32 +774,47 @@ def create_fact_table_asset(fact_name: str, source_model: SourceModel, daily_par
                     if field_name not in foreign_keys_to_remove:
                         output_columns.append(field_name)
         
-        # Order: keys first, then date_dim_id, then other surrogate keys, then remaining attributes
+        # Order: keys first, then other surrogate keys, then remaining attributes
         key_fields = [field.alias or field.name for source in fact.sources.values() for field in source.fields if field.type == SourceFieldType.KEY]
         other_surrogate_keys = [lookup['surrogate_key'] for lookup in dimension_lookups]
-        all_surrogate_keys = [date_dim_id_column] + other_surrogate_keys
+        
+        # Add dim_date_sk if it exists in the dataframe (special case for date dimension)
+        if 'dim_date_sk' in fact_df.columns and 'dim_date_sk' not in other_surrogate_keys:
+            other_surrogate_keys.append('dim_date_sk')
+            
+        all_surrogate_keys = other_surrogate_keys
         other_fields = [f for f in output_columns if f not in key_fields]
-        ordered_columns = key_fields + [date_dim_id_column] + other_surrogate_keys + other_fields
+        ordered_columns = key_fields + other_surrogate_keys + other_fields
         final_columns = [col for col in ordered_columns if col in fact_df.columns]
         
         # Create final dataframe with proper types
         fact_final = pd.DataFrame()
         for col in final_columns:
             if col in all_surrogate_keys:
-                # Date dimension keys are dates, not integers
-                if col == date_dim_id_column:
-                    fact_final[col] = fact_df[col]
+                # Handle special case for date surrogate keys
+                if col == 'dim_date_sk':
+                    # Date surrogate keys should remain as dates
+                    fact_final[col] = pd.to_datetime(fact_df[col]).dt.date
                 else:
+                    # Regular surrogate keys are integers
                     fact_final[col] = fact_df[col].astype('Int64')
             else:
                 fact_final[col] = fact_df[col]
         
+        # Add audit columns
+        fact_final['extract_date'] = partition_date
+        current_time = pd.Timestamp.now()
+        fact_final['created_at'] = current_time
+        fact_final['updated_at'] = current_time
+        
         # Log summary
         context.log.info(f"Created {fact_name} with {len(fact_final)} records for partition {context.partition_key}")
-        context.log.info(f"Populated {date_dim_id_column} directly from partition date")
         for lookup in dimension_lookups:
             valid_count = fact_final[lookup['surrogate_key']].notna().sum()
             context.log.info(f"  - {valid_count} with valid {lookup['surrogate_key']}")
+        
+        # Set primary key for SQLite table creation
+        fact_final.attrs['primary_key'] = key_fields
         
         return fact_final
     
@@ -701,26 +861,32 @@ def create_date_dimension_asset(partitions_def):
         week_of_year = partition_date.isocalendar()[1]
         
         row = {
-            'dim_date_id': partition_date,
+            'dim_date_sk': partition_date,
+            'is_current': False,  # Initially set to False; will be updated to True for latest date after successful load
             'year': year,
+            'quarter': quarter,
             'month': month,
             'day': day,
-            'quarter': quarter,
             'day_of_week': day_of_week,
             'day_of_year': day_of_year,
             'week_of_year': week_of_year,
-            'month_name': partition_date.strftime('%B'),
             'day_name': partition_date.strftime('%A'),
+            'month_name': partition_date.strftime('%B'),
             'is_weekend': day_of_week >= 5,
             'is_month_start': day == 1,
             'is_month_end': (partition_date + datetime.timedelta(days=1)).day == 1,
             'is_quarter_start': month in [1, 4, 7, 10] and day == 1,
             'is_quarter_end': month in [3, 6, 9, 12] and (partition_date + datetime.timedelta(days=1)).day == 1,
             'is_year_start': month == 1 and day == 1,
-            'is_year_end': month == 12 and day == 31,
+            'is_year_end': month == 12 and day == 31
         }
         
         df = pd.DataFrame([row])
+        
+        # Set up DataFrame metadata for date dimension processing
+        df.attrs['primary_key'] = ['dim_date_sk']
+        df.attrs['load_mode'] = 'date_dim'  # Special mode for date dimension
+        
         context.log.info(f"Generated date dimension row for {partition_date}")
         return df
     

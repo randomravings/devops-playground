@@ -7,11 +7,12 @@ Provides environment-based resource configuration with support for:
 - Dagster internal storage
 
 Configuration via environment variables with strict validation.
+Note: .env file loading is handled by CLI - this module only reads environment variables.
 """
 
 import os
 import dagster as dg
-from dagster_etl_framework.io_managers import CsvIOManager, SourceCsvIOManager, PostgresIOManager
+from dagster_etl_framework.io_managers import SourceCsvIOManager, PostgresIOManager, SqliteIOManager
 
 
 def create_resources(
@@ -25,10 +26,10 @@ def create_resources(
     Resources are configured using environment variables with sensible defaults.
     
     Environment Variables:
-        WAREHOUSE_TYPE: Type of warehouse storage - 'csv' or 'postgres' (REQUIRED)
+        WAREHOUSE_TYPE: Type of warehouse storage - 'sqlite' or 'postgres' (default: 'sqlite')
         
-        For CSV mode (WAREHOUSE_TYPE=csv):
-            WAREHOUSE_PATH: Path for CSV warehouse files (REQUIRED)
+        For SQLite mode (WAREHOUSE_TYPE=sqlite or default):
+            SQLITE_DB_PATH: Path to SQLite database file (default: '.data/warehouse.db')
         
         For PostgreSQL mode (WAREHOUSE_TYPE=postgres):
             POSTGRES_HOST: PostgreSQL host (REQUIRED)
@@ -60,14 +61,16 @@ def create_resources(
             dagster_storage_path=".dagster/storage"
         )
     """
-    # Warehouse type - optional for import-time safety (allows test collection)
-    warehouse_type = os.getenv("WAREHOUSE_TYPE", "").lower()
-    
+    # Warehouse type - REQUIRED, no default
+    warehouse_type = os.getenv("WAREHOUSE_TYPE")
     if not warehouse_type:
-        # Return None to indicate resources aren't configured yet
-        # This allows modules to be imported without environment variables set
-        # Actual resource creation will fail at execution time if needed
-        return None
+        raise ValueError(
+            "WAREHOUSE_TYPE environment variable is required.\n"
+            "Set it to 'sqlite' or 'postgres' in your .env file or environment.\n"
+            "Example:\n"
+            "  export WAREHOUSE_TYPE=sqlite"
+        )
+    warehouse_type = warehouse_type.lower()
     
     # Select appropriate warehouse IO manager
     if warehouse_type == "postgres":
@@ -93,23 +96,27 @@ def create_resources(
             password=os.getenv("POSTGRES_PASSWORD"),
             schema=os.getenv("POSTGRES_SCHEMA", "public")
         )
-    elif warehouse_type == "csv":
-        warehouse_path = os.getenv("WAREHOUSE_PATH")
-        if not warehouse_path:
+    elif warehouse_type == "sqlite":
+        sqlite_db_path = os.getenv("SQLITE_DB_PATH")
+        if not sqlite_db_path:
             raise ValueError(
-                "WAREHOUSE_TYPE=csv requires WAREHOUSE_PATH environment variable.\n"
-                "Example: export WAREHOUSE_PATH=.data/warehouse"
+                "SQLITE_DB_PATH environment variable is required when WAREHOUSE_TYPE=sqlite.\n"
+                "Set it in your .env file or environment.\n"
+                "Example:\n"
+                "  export SQLITE_DB_PATH=.data/warehouse.db"
             )
+        print(f"→ [create_resources] Using SQLite: {sqlite_db_path}")
         
-        warehouse_io_manager = CsvIOManager(base_path=warehouse_path)
+        warehouse_io_manager = SqliteIOManager(db_path=sqlite_db_path)
     else:
         raise ValueError(
-            f"Invalid WAREHOUSE_TYPE='{warehouse_type}'. Must be 'csv' or 'postgres'."
+            f"Invalid WAREHOUSE_TYPE='{warehouse_type}'. Must be 'sqlite' or 'postgres'."
         )
     
-    # Allow environment variables to override defaults
-    actual_source_path = os.getenv("SOURCE_DATA_PATH", source_data_path)
-    actual_storage_path = os.getenv("DAGSTER_STORAGE_PATH", dagster_storage_path)
+    # Allow environment variables to override function parameters
+    # These have reasonable function parameter defaults, so env vars are truly optional overrides
+    actual_source_path = os.getenv("SOURCE_DATA_PATH") or source_data_path
+    actual_storage_path = os.getenv("DAGSTER_STORAGE_PATH") or dagster_storage_path
     
     return {
         "source_csv_io_manager": SourceCsvIOManager(base_path=actual_source_path),

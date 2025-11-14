@@ -260,10 +260,21 @@ Examples:
   dbci ALL /path/to/project
         """
     )
+    parser.add_argument(
+        "-C", "--allow-create",
+        action="store_true",
+        help="Allow creation of database and schema if they do not exist"
+    )
+    parser.add_argument(
+        "-S", "--schema",
+        type=str,
+        required=False,
+        help="Schema name to ensure exists before deployment"
+    )
     
     parser.add_argument(
         "operation",
-        choices=["INSTALL", "BUILD", "LINT", "DIFF", "GUARD", "ALL"],
+        choices=["INSTALL", "BUILD", "LINT", "DIFF", "GUARD", "ALL", "DEPLOY"],
         help="Operation to perform"
     )
     
@@ -272,6 +283,36 @@ Examples:
         type=pathlib.Path,
         nargs="?",
         help="Path to the project root directory (not used for INSTALL)"
+    )
+    parser.add_argument(
+        "-H", "--host",
+        type=str,
+        default="localhost",
+        help="Target database host (default: localhost)"
+    )
+    parser.add_argument(
+        "-P", "--port",
+        type=int,
+        default=5432,
+        help="Target database port (default: 5432)"
+    )
+    parser.add_argument(
+        "-d", "--dbname",
+        type=str,
+        default="postgres",
+        help="Target database name (default: postgres)"
+    )
+    parser.add_argument(
+        "-u", "--user",
+        type=str,
+        required=False,
+        help="Username for database authentication"
+    )
+    parser.add_argument(
+        "-p", "--password",
+        type=str,
+        required=False,
+        help="Password for database authentication"
     )
     
     args = parser.parse_args()
@@ -312,7 +353,19 @@ Examples:
             guard_schema(project_root)
         elif args.operation == "ALL":
             run_all(project_root)
-            
+        elif args.operation == "DEPLOY":
+            from .deploy import run_deploy
+            source_dir = project_root / "db" / "schema"
+            run_deploy(
+                source_dir=source_dir,
+                host=args.host,
+                port=args.port,
+                dbname=args.dbname,
+                user=args.user,
+                password=args.password,
+                schema=args.schema,
+                allow_create=args.allow_create
+            )
     except subprocess.CalledProcessError as e:
         print(f"Error: Command failed with exit code {e.returncode}", file=sys.stderr)
         sys.exit(e.returncode)

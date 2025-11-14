@@ -7,7 +7,7 @@ with automatic handling of:
 - SCD Type 2 dimension processing
 - Fact table construction with dimension lookups
 - Date dimension generation
-- Flexible storage backends (CSV, PostgreSQL)
+- Flexible storage backends (SQLite, PostgreSQL)
 
 Example:
     from dagster_etl_framework import (
@@ -71,9 +71,9 @@ from .source_model import (
 
 # IO Managers
 from .io_managers import (
-    CsvIOManager,
     SourceCsvIOManager,
     PostgresIOManager,
+    SqliteIOManager,
 )
 
 # Source model loader
@@ -144,9 +144,9 @@ __all__ = [
     "SourceModel",
     
     # IO Managers
-    "CsvIOManager",
     "SourceCsvIOManager",
     "PostgresIOManager",
+    "SqliteIOManager",
     
     # Source model loader
     "load_source_model",

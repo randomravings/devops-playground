@@ -1,5 +1,2 @@
-# Test configuration - uses CSV files for warehouse
-resources:
-  warehouse_io_manager:
-    config:
-      base_path: ".data/warehouse"
+# Test configuration - uses SQLite for warehouse (default)
+# No configuration needed - defaults to SQLITE_DB_PATH=.data/warehouse.db
